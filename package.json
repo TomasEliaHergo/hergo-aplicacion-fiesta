@@ -1,0 +1,9 @@
+{
+  "name": "asistencia-fiesta",
+  "private": true,
+  "description": "Raíz para Vercel: api/index.js (ESM) envuelve server/; las dependencias viven en server/ y client/.",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  }
+}

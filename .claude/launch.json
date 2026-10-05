@@ -1,0 +1,8 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "precios", "runtimeExecutable": "node", "runtimeArgs": ["servidor-local.js"], "port": 3000, "autoPort": true },
+    { "name": "client", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "client"], "port": 5173 },
+    { "name": "server", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--prefix", "server"], "port": 4000 }
+  ]
+}

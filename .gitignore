@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Variables de entorno (secretos). Las plantillas .env.example SÍ se versionan.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Modo local (PGlite, fotos y credenciales generadas)
+server/.data/
+
+# Builds / despliegue
+client/dist/
+.vercel/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
