@@ -42,7 +42,9 @@ router.get('/', validate({ query: listaQuery }), async (req, res) => {
 });
 
 router.get('/filtros', async (_req, res) => {
-  res.json(await empleados.filtros());
+  const data = await empleados.filtros();
+  res.set('Cache-Control', 'private, max-age=10');
+  res.json(data);
 });
 
 // Rutas estáticas antes de "/:id"

@@ -63,6 +63,7 @@ export function getConfig() {
     isLocal: env.DB_MODE === 'local',
     corsOrigins: env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean),
     jwtExpiresIn: '10h',
+    jwtExpiresSeg: 10 * 3600,
     fotosBucket: 'fotos',
   });
   return cached;

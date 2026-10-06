@@ -115,7 +115,7 @@ async function parseError(res) {
   return new ApiError(res.status, codigo, mensaje, data?.detalles);
 }
 
-async function request(path, { method = 'GET', body, query, signal, raw = false } = {}) {
+async function request(path, { method = 'GET', body, query, signal, raw = false, cache } = {}) {
   const headers = { Accept: 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -130,7 +130,7 @@ async function request(path, { method = 'GET', body, query, signal, raw = false 
 
   let res;
   try {
-    res = await fetch(`/api${path}${buildQuery(query)}`, { method, headers, body: payload, signal });
+    res = await fetch(`/api${path}${buildQuery(query)}`, { method, headers, body: payload, signal, cache });
   } catch (err) {
     if (err?.name === 'AbortError') throw err;
     throw new ApiError(0, 'RED', MENSAJES_POR_CODIGO.RED);

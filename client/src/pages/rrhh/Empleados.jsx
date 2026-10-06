@@ -1,14 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ImageOff, ImagePlus, Pencil, Plus, QrCode, SearchX, Trash2, UserPlus } from 'lucide-react';
 import { api } from '../../api.js';
-import Avatar from '../../components/Avatar.jsx';
 import Modal from '../../components/Modal.jsx';
-import Pagination from '../../components/Pagination.jsx';
 import QrCard from '../../components/QrCard.jsx';
-import { Alert, Spinner, useConfirm, useToast } from '../../components/Feedback.jsx';
-import { useDebounced } from '../../hooks/hooks.js';
-import { useFiltros } from '../../hooks/useFiltros.js';
-import { formatDocumento, formatHora, MAX_FOTO_BYTES } from '../../utils.js';
+import {
+  ActionMenu,
+  Card,
+  EmptyState,
+  ListSkeleton,
+  PageHeader,
+  Pagination,
+  PersonCell,
+  Pill,
+  SearchInput,
+  SelectFilter,
+} from '../../components/admin/ui.jsx';
+import { Alert, useConfirm, useToast } from '../../components/Feedback.jsx';
+import { useDebounced, useDocumentTitle, useMediaQuery } from '../../hooks/hooks.js';
+import { invalidate, mutate, useApi } from '../../hooks/useApi.js';
+import { formatDocumento, formatHora, formatNumero, MAX_FOTO_BYTES } from '../../utils.js';
+import { empleadosKey, fetchEmpleados, fetchFiltros, FILTROS_DEFAULT } from './data.js';
 import EmpleadoForm from './EmpleadoForm.jsx';
 
 const PAGE_SIZE = 50;
@@ -19,21 +31,25 @@ function QrModal({ empleado, onClose }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!empleado) return;
+    if (!empleado) return undefined;
+    const ctrl = new AbortController();
     setToken(null);
     setError('');
     api
-      .get(`/empleados/${empleado.id}/qr`)
+      .get(`/empleados/${empleado.id}/qr`, null, { signal: ctrl.signal })
       .then((d) => setToken(d.qr_token))
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        if (err?.name !== 'AbortError') setError(err.message);
+      });
+    return () => ctrl.abort();
   }, [empleado]);
 
   return (
     <Modal open={!!empleado} title="Código QR" onClose={onClose} size="sm">
       <Alert>{error}</Alert>
       {!token && !error && (
-        <div className="center pad">
-          <Spinner />
+        <div className="qr-skel">
+          <span className="skeleton" />
         </div>
       )}
       {token && empleado && <QrCard value={token} nombre={empleado.nombre} empresa={empleado.empresa} />}
@@ -42,20 +58,27 @@ function QrModal({ empleado, onClose }) {
 }
 
 export default function Empleados() {
+  useDocumentTitle('Empleados - Panel RRHH');
   const toast = useToast();
   const confirm = useConfirm();
-  const [filtros, recargarFiltros] = useFiltros();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const filtrosApi = useApi('filtros', fetchFiltros);
+  const filtros = filtrosApi.data || FILTROS_DEFAULT;
 
   const [q, setQ] = useState('');
   const [empresa, setEmpresa] = useState('');
   const [sector, setSector] = useState('');
-  const [page, setPage] = useState(1);
-  const qDeb = useDebounced(q, 300);
+  const qDeb = useDebounced(q.trim(), 300);
+  const sig = `${qDeb}|${empresa}|${sector}`;
+  const [pageState, setPageState] = useState({ sig, page: 1 });
+  const page = pageState.sig === sig ? pageState.page : 1;
 
-  const [lista, setLista] = useState({ items: [], total: 0 });
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
-  const reqId = useRef(0);
+  const params = { q: qDeb, empresa, sector, orden: 'nombre', page, pageSize: PAGE_SIZE };
+  const listKey = empleadosKey(params);
+  const lista = useApi(listKey, fetchEmpleados(params));
+  const items = lista.data?.items || [];
+  const total = lista.data?.total || 0;
+  const hayFiltros = !!(q || empresa || sector);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -63,43 +86,10 @@ export default function Empleados() {
   const [subiendoFoto, setSubiendoFoto] = useState(null); // id del empleado
   const fileRef = useRef(null);
   const fotoTarget = useRef(null);
-
-  useEffect(() => {
-    document.title = 'Empleados - Panel RRHH';
-  }, []);
-
-  const cargar = useCallback(async () => {
-    const id = ++reqId.current;
-    setCargando(true);
-    try {
-      const data = await api.get('/empleados', {
-        q: qDeb.trim(),
-        empresa,
-        sector,
-        orden: 'nombre',
-        page,
-        pageSize: PAGE_SIZE,
-      });
-      if (id !== reqId.current) return;
-      setLista({ items: data.items || [], total: data.total || 0 });
-      setError('');
-    } catch (err) {
-      if (id === reqId.current) setError(err.message);
-    } finally {
-      if (id === reqId.current) setCargando(false);
-    }
-  }, [qDeb, empresa, sector, page]);
-
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [qDeb, empresa, sector]);
+  const topRef = useRef(null);
 
   const reemplazarItem = (emp) =>
-    setLista((l) => ({ ...l, items: l.items.map((x) => (x.id === emp.id ? { ...x, ...emp } : x)) }));
+    mutate(listKey, (l) => ({ ...l, items: l.items.map((x) => (x.id === emp.id ? { ...x, ...emp } : x)) }));
 
   const abrirNuevo = () => {
     setEditando(null);
@@ -114,9 +104,10 @@ export default function Empleados() {
   const onSaved = (emp, esNuevo) => {
     setFormOpen(false);
     toast(esNuevo ? `Se creó a ${emp.nombre}.` : `Se guardaron los cambios de ${emp.nombre}.`);
-    if (esNuevo) cargar();
-    else reemplazarItem(emp);
-    recargarFiltros();
+    if (!esNuevo) reemplazarItem(emp);
+    invalidate('emp:');
+    invalidate('filtros');
+    invalidate('panel');
   };
 
   const eliminar = async (emp) => {
@@ -129,11 +120,13 @@ export default function Empleados() {
     if (!ok) return;
     try {
       await api.del(`/empleados/${emp.id}`);
+      mutate(listKey, (l) => ({ ...l, items: l.items.filter((x) => x.id !== emp.id), total: Math.max(0, l.total - 1) }));
       toast(`Se eliminó a ${emp.nombre}.`);
-      cargar();
     } catch (err) {
       toast(err.message, 'error');
     }
+    invalidate('emp:');
+    invalidate('panel');
   };
 
   const elegirFoto = (emp) => {
@@ -158,6 +151,7 @@ export default function Empleados() {
     try {
       const actualizado = await api.upload(`/empleados/${emp.id}/foto`, fd);
       reemplazarItem(actualizado);
+      invalidate('emp:');
       toast(`Foto de ${emp.nombre} actualizada.`);
     } catch (err) {
       toast(err.message, 'error');
@@ -177,182 +171,213 @@ export default function Empleados() {
     try {
       await api.del(`/empleados/${emp.id}/foto`);
       reemplazarItem({ id: emp.id, foto_url: null });
+      invalidate('emp:');
       toast(`Se quitó la foto de ${emp.nombre}.`);
     } catch (err) {
       toast(err.message, 'error');
     }
   };
 
+  const menuDe = (e) => (
+    <ActionMenu
+      label={`Acciones para ${e.nombre}`}
+      items={[
+        { label: 'Editar datos', icon: Pencil, onSelect: () => abrirEditar(e) },
+        { label: 'Ver QR', icon: QrCode, onSelect: () => setQrDe(e) },
+        {
+          label: e.foto_url ? 'Cambiar foto' : 'Subir foto',
+          icon: ImagePlus,
+          onSelect: () => elegirFoto(e),
+          disabled: subiendoFoto === e.id,
+        },
+        e.foto_url && { label: 'Quitar foto', icon: ImageOff, onSelect: () => quitarFoto(e) },
+        { label: 'Eliminar', icon: Trash2, danger: true, separator: true, onSelect: () => eliminar(e) },
+      ]}
+    />
+  );
+
+  const ingresoPill = (e) =>
+    e.asistio ? (
+      <Pill tone="ok" dot>
+        <span className="tabular">{formatHora(e.escaneado_at)}</span>
+      </Pill>
+    ) : (
+      <Pill tone="neutral">Sin ingreso</Pill>
+    );
+
   return (
-    <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Empleados</h1>
-          <p className="muted small">
-            Para cargas masivas usá <Link to="/admin/importar">Importar Excel</Link> y{' '}
-            <Link to="/admin/fotos">Fotos masivas</Link>.
-          </p>
-        </div>
-        <div className="page-actions">
+    <>
+      <PageHeader
+        title="Empleados"
+        description={
+          <>
+            Altas, ediciones y fotos individuales. Para cargas masivas usá{' '}
+            <Link to="/admin/importar">Importar</Link> y <Link to="/admin/fotos">Fotos</Link>.
+          </>
+        }
+        actions={
           <button type="button" className="btn btn-primary" onClick={abrirNuevo}>
-            + Nuevo empleado
+            <Plus size={16} aria-hidden="true" />
+            Nuevo empleado
           </button>
+        }
+      />
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => {
+          subirFoto(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+
+      <Card flush className="list-card">
+        <div className="list-head" ref={topRef}>
+          <h2 className="card-title">
+            Listado
+            {lista.data && <span className="count-badge tabular">{formatNumero(total)}</span>}
+          </h2>
         </div>
-      </div>
-
-      <section className="card">
-        <div className="filters">
-          <div className="field field-inline grow">
-            <label htmlFor="emp-q">Buscar</label>
-            <input
-              id="emp-q"
-              type="search"
-              placeholder="Nombre o documento"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <div className="field field-inline">
-            <label htmlFor="emp-f-empresa">Empresa</label>
-            <select id="emp-f-empresa" value={empresa} onChange={(e) => setEmpresa(e.target.value)}>
-              <option value="">Todas</option>
-              {filtros.empresas.map((x) => (
-                <option key={x} value={x}>
-                  {x}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field field-inline">
-            <label htmlFor="emp-f-sector">Sector</label>
-            <select id="emp-f-sector" value={sector} onChange={(e) => setSector(e.target.value)}>
-              <option value="">Todos</option>
-              {filtros.sectores.map((x) => (
-                <option key={x} value={x}>
-                  {x}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="toolbar">
+          <SearchInput id="emp-q" value={q} onChange={setQ} placeholder="Nombre o documento" />
+          <SelectFilter
+            id="emp-f-empresa"
+            label="Empresa"
+            allLabel="Todas las empresas"
+            value={empresa}
+            onChange={setEmpresa}
+            options={filtros.empresas}
+          />
+          <SelectFilter
+            id="emp-f-sector"
+            label="Sector"
+            allLabel="Todos los sectores"
+            value={sector}
+            onChange={setSector}
+            options={filtros.sectores}
+          />
         </div>
 
-        <Alert>{error}</Alert>
+        {lista.error && (
+          <div className="list-alert">
+            <Alert>
+              {lista.error.message}{' '}
+              <button type="button" className="btn btn-link btn-sm" onClick={lista.reload}>
+                Reintentar
+              </button>
+            </Alert>
+          </div>
+        )}
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(e) => {
-            subirFoto(e.target.files?.[0]);
-            e.target.value = '';
-          }}
-        />
-
-        <div className="table-wrap" aria-busy={cargando}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Foto</th>
-                <th scope="col">Nombre</th>
-                <th scope="col">Documento</th>
-                <th scope="col">Empresa</th>
-                <th scope="col">Sector</th>
-                <th scope="col">Ingreso</th>
-                <th scope="col">
-                  <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.items.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <div className="photo-cell">
-                      {subiendoFoto === e.id ? (
-                        <Spinner label="Subiendo foto…" />
-                      ) : (
-                        <Avatar nombre={e.nombre} src={e.foto_url} size={40} />
-                      )}
-                    </div>
-                  </td>
-                  <td className="strong">{e.nombre}</td>
-                  <td className="mono">{formatDocumento(e.documento)}</td>
-                  <td>{e.empresa || '—'}</td>
-                  <td>{e.sector || '—'}</td>
-                  <td>
-                    {e.asistio ? (
-                      <span className="badge badge-ok">{formatHora(e.escaneado_at)}</span>
-                    ) : (
-                      <span className="badge badge-muted">—</span>
-                    )}
-                  </td>
-                  <td className="actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => abrirEditar(e)}
-                      aria-label={`Editar a ${e.nombre}`}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => elegirFoto(e)}
-                      disabled={subiendoFoto === e.id}
-                      aria-label={`${e.foto_url ? 'Cambiar' : 'Subir'} foto de ${e.nombre}`}
-                    >
-                      {e.foto_url ? 'Cambiar foto' : 'Subir foto'}
-                    </button>
-                    {e.foto_url && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => quitarFoto(e)}
-                        aria-label={`Quitar foto de ${e.nombre}`}
-                      >
-                        Quitar foto
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setQrDe(e)}
-                      aria-label={`Ver QR de ${e.nombre}`}
-                    >
-                      QR
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-danger-outline btn-sm btn-destructive-sep"
-                      onClick={() => eliminar(e)}
-                      aria-label={`Eliminar a ${e.nombre}`}
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!cargando && lista.items.length === 0 && (
+        <div className={`list-body ${lista.isStale ? 'is-stale' : ''}`} aria-busy={lista.isValidating}>
+          {lista.isLoading ? (
+            <ListSkeleton cards={!isDesktop} />
+          ) : items.length === 0 ? (
+            hayFiltros ? (
+              <EmptyState
+                icon={SearchX}
+                title="Sin resultados"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setQ('');
+                      setEmpresa('');
+                      setSector('');
+                    }}
+                  >
+                    Limpiar filtros
+                  </button>
+                }
+              >
+                Probá con otro nombre, documento o filtro.
+              </EmptyState>
+            ) : (
+              <EmptyState
+                icon={UserPlus}
+                title="Todavía no hay empleados"
+                action={
+                  <Link to="/admin/importar" className="btn btn-primary">
+                    Importar desde Excel
+                  </Link>
+                }
+              >
+                Cargalos de a uno con “Nuevo empleado” o todos juntos desde un Excel.
+              </EmptyState>
+            )
+          ) : isDesktop ? (
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={7} className="empty">
-                    No hay empleados que coincidan. Podés importarlos desde un Excel.
-                  </td>
+                  <th scope="col">Empleado</th>
+                  <th scope="col">Empresa</th>
+                  <th scope="col">Sector</th>
+                  <th scope="col">Ingreso</th>
+                  <th scope="col" className="col-actions">
+                    <span className="sr-only">Acciones</span>
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-          {cargando && lista.items.length === 0 && (
-            <div className="center pad">
-              <Spinner />
-            </div>
+              </thead>
+              <tbody>
+                {items.map((e) => (
+                  <tr key={e.id}>
+                    <td>
+                      <PersonCell
+                        nombre={e.nombre}
+                        foto_url={e.foto_url}
+                        documento={e.documento}
+                        busy={subiendoFoto === e.id}
+                      />
+                    </td>
+                    <td>{e.empresa || <span className="muted">—</span>}</td>
+                    <td>{e.sector || <span className="muted">—</span>}</td>
+                    <td>{ingresoPill(e)}</td>
+                    <td className="col-actions">{menuDe(e)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <ul className="card-list">
+              {items.map((e) => (
+                <li key={e.id} className="row-card">
+                  <PersonCell
+                    nombre={e.nombre}
+                    foto_url={e.foto_url}
+                    documento={e.documento}
+                    busy={subiendoFoto === e.id}
+                    extra={
+                      (e.empresa || e.sector) && (
+                        <span className="row-card-org">{[e.empresa, e.sector].filter(Boolean).join(' · ')}</span>
+                      )
+                    }
+                  />
+                  <div className="row-card-side">
+                    {ingresoPill(e)}
+                    {menuDe(e)}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-        <Pagination page={page} pageSize={PAGE_SIZE} total={lista.total} onChange={setPage} />
-      </section>
+
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onChange={(p) => {
+            setPageState({ sig, page: p });
+            topRef.current?.scrollIntoView({ block: 'start' });
+          }}
+        />
+      </Card>
 
       <EmpleadoForm
         open={formOpen}
@@ -362,6 +387,6 @@ export default function Empleados() {
         onSaved={onSaved}
       />
       <QrModal empleado={qrDe} onClose={() => setQrDe(null)} />
-    </div>
+    </>
   );
 }

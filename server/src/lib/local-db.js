@@ -1,7 +1,7 @@
 // Modo local (DB_MODE=local): Postgres real en WASM (PGlite) persistido en
 // server/.data/pgdata. Solo para desarrollo/pruebas en una PC sin Postgres ni
 // Supabase. El camino de producción (Supabase) no usa este archivo.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,28 @@ export const PGDATA_DIR = path.join(DATA_DIR, 'pgdata');
 export const FOTOS_DIR = path.join(DATA_DIR, 'fotos');
 export const CREDENCIALES_FILE = path.join(DATA_DIR, 'CREDENCIALES-LOCAL.txt');
 const SCHEMA_FILE = path.join(SERVER_DIR, 'db', 'schema.sql');
+const MIGRACIONES_DIR = path.join(SERVER_DIR, 'db', 'migraciones');
+
+/** Lee un .sql del repo renombrando el schema si DB_SCHEMA no es el default. */
+async function leerSql(archivo, esquema) {
+  const sql = await readFile(archivo, 'utf8');
+  return esquema === DEFAULT_DB_SCHEMA ? sql : sql.replace(new RegExp(`\\b${DEFAULT_DB_SCHEMA}\\b`, 'g'), esquema);
+}
+
+/**
+ * Aplica db/migraciones/*.sql en orden alfabético en CADA arranque: deben ser
+ * idempotentes (create or replace / if not exists). Así una .data creada con un
+ * schema.sql anterior recibe los objetos nuevos sin tener que borrarla.
+ */
+async function aplicarMigraciones(db, esquema) {
+  let archivos = [];
+  try {
+    archivos = (await readdir(MIGRACIONES_DIR)).filter((f) => f.endsWith('.sql')).sort();
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  for (const f of archivos) await db.exec(await leerSql(path.join(MIGRACIONES_DIR, f), esquema));
+}
 
 // Stubs de lo que Supabase trae de fábrica y schema.sql da por sentado:
 // schema "extensions", roles anon/authenticated/service_role y storage.buckets.
@@ -76,11 +98,11 @@ async function abrir() {
       throw new Error(`server/.data fue creada por una versión anterior (tablas en "public", no en "${esquema}"). `
         + 'Borrarla con: npm run reset:local --prefix server');
     }
-    let sql = await readFile(SCHEMA_FILE, 'utf8');
-    if (esquema !== DEFAULT_DB_SCHEMA) sql = sql.replace(new RegExp(`\\b${DEFAULT_DB_SCHEMA}\\b`, 'g'), esquema);
+    const sql = await leerSql(SCHEMA_FILE, esquema);
     // exec con varias sentencias = una transacción implícita: si falla, no queda nada a medias.
     await db.exec(`${PREAMBULO_SUPABASE}\n${sql}`);
   }
+  await aplicarMigraciones(db, esquema);
   // El cliente local califica todo con el schema; el search_path es solo una red
   // de seguridad para SQL escrito a mano.
   await db.exec(`set search_path to "${esquema}", extensions, public`);

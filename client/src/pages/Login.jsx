@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { Alert, Spinner } from '../components/Feedback.jsx';
+import { useDocumentTitle, useTheme } from '../hooks/hooks.js';
 import { homeForRole } from '../utils.js';
+import '../styles/login.css';
 
 function destinoPermitido(from, rol) {
   if (!from) return null;
@@ -12,16 +15,15 @@ function destinoPermitido(from, rol) {
 }
 
 export default function Login() {
+  useTheme('light');
+  useDocumentTitle('Ingresar - Fiesta de fin de año');
   const { usuario, login } = useAuth();
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [verPass, setVerPass] = useState(false);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
-
-  useEffect(() => {
-    document.title = 'Ingresar - Fiesta de fin de año';
-  }, []);
 
   // Tras el login (o si ya había sesión) se redirige según el rol.
   if (usuario) {
@@ -51,43 +53,72 @@ export default function Login() {
   };
 
   return (
-    <main className="center-page login-page">
-      <form className="card narrow" onSubmit={onSubmit} noValidate>
-        <p className="eyebrow">Fiesta de fin de año</p>
-        <h1>Ingreso del personal</h1>
-        {location.state?.expirada && (
-          <Alert tipo="warning">Tu sesión expiró o fue cerrada. Volvé a ingresar.</Alert>
-        )}
-        <div className="field">
-          <label htmlFor="username">Usuario</label>
-          <input
-            id="username"
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-          />
+    <main className="login-page">
+      <div className="login-wrap">
+        <div className="login-brand">
+          <span className="brand-mark" aria-hidden="true">
+            <Sparkles size={22} />
+          </span>
+          <h1>Fiesta Hergo</h1>
+          <p>Acceso del personal · RRHH y puerta</p>
         </div>
-        <div className="field">
-          <label htmlFor="password">Contraseña</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <Alert>{error}</Alert>
-        <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={cargando}>
-          {cargando ? <Spinner label="Ingresando…" /> : 'Ingresar'}
-        </button>
-        <p className="center small">
-          <Link to="/">¿Sos invitado? Obtené tu QR acá</Link>
+
+        <form className="login-card" onSubmit={onSubmit} noValidate>
+          {location.state?.expirada && (
+            <Alert tipo="warning" className="login-alert">
+              Tu sesión expiró o fue cerrada. Volvé a ingresar.
+            </Alert>
+          )}
+          <div className="field">
+            <label htmlFor="username">Usuario</label>
+            <input
+              id="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="password">Contraseña</label>
+            <div className="password-field">
+              <input
+                id="password"
+                type={verPass ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon password-toggle"
+                onClick={() => setVerPass((v) => !v)}
+                aria-label={verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={verPass}
+              >
+                {verPass ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </button>
+            </div>
+          </div>
+          <Alert>{error}</Alert>
+          <button type="submit" className="btn btn-primary btn-block" disabled={cargando}>
+            {cargando ? (
+              <Spinner label="Ingresando…" />
+            ) : (
+              <>
+                <LogIn size={18} aria-hidden="true" />
+                Ingresar
+              </>
+            )}
+          </button>
+        </form>
+
+        <p className="login-foot">
+          ¿Sos invitado? <Link to="/">Obtené tu QR acá</Link>
         </p>
-      </form>
+      </div>
     </main>
   );
 }

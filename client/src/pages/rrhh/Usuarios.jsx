@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { KeyRound, Pencil, Plus, Power, UserCog } from 'lucide-react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
+import Avatar from '../../components/Avatar.jsx';
 import Modal from '../../components/Modal.jsx';
+import { ActionMenu, Card, EmptyState, ListSkeleton, PageHeader, Pill } from '../../components/admin/ui.jsx';
 import { Alert, Spinner, useConfirm, useToast } from '../../components/Feedback.jsx';
+import { useDocumentTitle, useMediaQuery } from '../../hooks/hooks.js';
+import { mutate, useApi } from '../../hooks/useApi.js';
 import { erroresPorCampo, formatFechaHora, ROL_LABEL } from '../../utils.js';
+import { fetchUsuarios } from './data.js';
 
 const MIN_PASS = 8;
 
@@ -112,7 +118,7 @@ function NuevoUsuario({ open, onClose, onCreated }) {
           {err('password') || <small className="muted">Mínimo {MIN_PASS} caracteres.</small>}
         </div>
         <Alert>{errorGeneral}</Alert>
-        <div className="modal-footer inline">
+        <div className="form-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancelar
           </button>
@@ -183,7 +189,7 @@ function EditarUsuario({ usuario, esYo, onClose, onSaved }) {
           )}
         </div>
         <Alert>{error}</Alert>
-        <div className="modal-footer inline">
+        <div className="form-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancelar
           </button>
@@ -248,7 +254,7 @@ function ResetPassword({ usuario, onClose, onDone }) {
           />
         </div>
         <Alert>{error}</Alert>
-        <div className="modal-footer inline">
+        <div className="form-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancelar
           </button>
@@ -262,37 +268,18 @@ function ResetPassword({ usuario, onClose, onDone }) {
 }
 
 export default function Usuarios() {
+  useDocumentTitle('Usuarios - Panel RRHH');
   const { usuario: yo } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
-  const [usuarios, setUsuarios] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const { data, error, isLoading, reload } = useApi('usuarios', fetchUsuarios);
+  const usuarios = data || [];
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [editando, setEditando] = useState(null);
   const [resetDe, setResetDe] = useState(null);
 
-  useEffect(() => {
-    document.title = 'Usuarios - Panel RRHH';
-  }, []);
-
-  const cargar = useCallback(async () => {
-    try {
-      const data = await api.get('/usuarios');
-      setUsuarios(Array.isArray(data) ? data : data?.items || []);
-      setError('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCargando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
-
-  const reemplazar = (u) => setUsuarios((list) => list.map((x) => (x.id === u.id ? u : x)));
+  const reemplazar = (u) => mutate('usuarios', (list) => list.map((x) => (x.id === u.id ? u : x)));
 
   const toggleActivo = async (u) => {
     const activar = !u.activo;
@@ -300,116 +287,137 @@ export default function Usuarios() {
       titulo: activar ? 'Activar usuario' : 'Desactivar usuario',
       mensaje: activar
         ? `¿Activar a ${u.nombre} (${u.username})? Va a poder volver a iniciar sesión.`
-        : `¿Desactivar a ${u.nombre} (${u.username})? Pierde el acceso en menos de un minuto. Su historial de escaneos se conserva.`,
+        : `¿Desactivar a ${u.nombre} (${u.username})? Pierde el acceso en unos minutos. Su historial de escaneos se conserva.`,
       confirmar: activar ? 'Activar' : 'Desactivar',
       peligro: !activar,
     });
     if (!ok) return;
+    // UI optimista: se refleja al instante y se revierte si el backend lo rechaza.
+    reemplazar({ ...u, activo: activar });
     try {
       reemplazar(await api.put(`/usuarios/${u.id}`, { activo: activar }));
       toast(`${u.nombre} ${activar ? 'activado' : 'desactivado'}.`);
     } catch (err) {
+      reemplazar(u);
       toast(err.message, 'error');
     }
   };
 
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Usuarios</h1>
-          <p className="muted small">
-            Los usuarios no se borran: se desactivan para conservar quién registró cada ingreso.
-          </p>
-        </div>
-        <div className="page-actions">
-          <button type="button" className="btn btn-primary" onClick={() => setNuevoOpen(true)}>
-            + Nuevo usuario
-          </button>
-        </div>
-      </div>
+  const menuDe = (u, esYo) => (
+    <ActionMenu
+      label={`Acciones para ${u.username}`}
+      items={[
+        { label: 'Editar', icon: Pencil, onSelect: () => setEditando(u) },
+        { label: 'Cambiar contraseña', icon: KeyRound, onSelect: () => setResetDe(u) },
+        {
+          label: u.activo ? 'Desactivar' : 'Activar',
+          icon: Power,
+          danger: u.activo,
+          separator: true,
+          disabled: esYo,
+          title: esYo ? 'No podés desactivarte a vos mismo' : undefined,
+          onSelect: () => toggleActivo(u),
+        },
+      ]}
+    />
+  );
 
-      <section className="card">
-        <Alert>{error}</Alert>
-        <div className="table-wrap" aria-busy={cargando}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Usuario</th>
-                <th scope="col">Nombre</th>
-                <th scope="col">Rol</th>
-                <th scope="col">Estado</th>
-                <th scope="col">Creado</th>
-                <th scope="col">
-                  <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+  const rolPill = (u) => <Pill tone={u.rol === 'rrhh' ? 'accent' : 'info'}>{ROL_LABEL[u.rol] || u.rol}</Pill>;
+  const estadoPill = (u) =>
+    u.activo ? (
+      <Pill tone="ok" dot>
+        Activo
+      </Pill>
+    ) : (
+      <Pill tone="neutral">Inactivo</Pill>
+    );
+
+  return (
+    <>
+      <PageHeader
+        title="Usuarios"
+        description="Personal con acceso al panel y al escáner. No se borran: se desactivan para conservar quién registró cada ingreso."
+        actions={
+          <button type="button" className="btn btn-primary" onClick={() => setNuevoOpen(true)}>
+            <Plus size={16} aria-hidden="true" />
+            Nuevo usuario
+          </button>
+        }
+      />
+
+      {error && !data && (
+        <Alert>
+          {error.message}{' '}
+          <button type="button" className="btn btn-link btn-sm" onClick={reload}>
+            Reintentar
+          </button>
+        </Alert>
+      )}
+
+      <Card flush className="list-card">
+        <div className="list-body">
+          {isLoading ? (
+            <ListSkeleton rows={4} cards={!isDesktop} />
+          ) : usuarios.length === 0 ? (
+            <EmptyState icon={UserCog} title="No hay usuarios" />
+          ) : isDesktop ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Usuario</th>
+                  <th scope="col">Rol</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Creado</th>
+                  <th scope="col" className="col-actions">
+                    <span className="sr-only">Acciones</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {usuarios.map((u) => {
+                  const esYo = u.id === yo?.id;
+                  return (
+                    <tr key={u.id} className={u.activo ? '' : 'row-inactive'}>
+                      <td>
+                        <UserCell u={u} esYo={esYo} />
+                      </td>
+                      <td>{rolPill(u)}</td>
+                      <td>{estadoPill(u)}</td>
+                      <td className="muted tabular">{formatFechaHora(u.created_at)}</td>
+                      <td className="col-actions">{menuDe(u, esYo)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <ul className="card-list">
               {usuarios.map((u) => {
                 const esYo = u.id === yo?.id;
                 return (
-                  <tr key={u.id} className={u.activo ? '' : 'row-inactive'}>
-                    <td className="mono">
-                      {u.username} {esYo && <span className="badge badge-accent">Vos</span>}
-                    </td>
-                    <td className="strong">{u.nombre}</td>
-                    <td>
-                      <span className={`badge ${u.rol === 'rrhh' ? 'badge-accent' : 'badge-info'}`}>
-                        {ROL_LABEL[u.rol] || u.rol}
-                      </span>
-                    </td>
-                    <td>
-                      {u.activo ? (
-                        <span className="badge badge-ok">Activo</span>
-                      ) : (
-                        <span className="badge badge-muted">Inactivo</span>
-                      )}
-                    </td>
-                    <td>{formatFechaHora(u.created_at)}</td>
-                    <td className="actions">
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditando(u)}>
-                        Editar
-                      </button>
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setResetDe(u)}>
-                        Cambiar contraseña
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-sm ${u.activo ? 'btn-danger-outline' : 'btn-secondary'}`}
-                        onClick={() => toggleActivo(u)}
-                        disabled={esYo}
-                        title={esYo ? 'No podés desactivarte a vos mismo' : undefined}
-                      >
-                        {u.activo ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </td>
-                  </tr>
+                  <li key={u.id} className={`row-card ${u.activo ? '' : 'row-inactive'}`}>
+                    <UserCell u={u} esYo={esYo} />
+                    <div className="row-card-side">
+                      <div className="row-card-pills">
+                        {rolPill(u)}
+                        {estadoPill(u)}
+                      </div>
+                      {menuDe(u, esYo)}
+                    </div>
+                  </li>
                 );
               })}
-              {!cargando && usuarios.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="empty">
-                    No hay usuarios.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          {cargando && (
-            <div className="center pad">
-              <Spinner />
-            </div>
+            </ul>
           )}
         </div>
-      </section>
+      </Card>
 
       <NuevoUsuario
         open={nuevoOpen}
         onClose={() => setNuevoOpen(false)}
         onCreated={(u) => {
           setNuevoOpen(false);
-          setUsuarios((list) => [...list, u]);
+          mutate('usuarios', (list) => [...list, u]);
           toast(`Usuario ${u.username} creado.`);
         }}
       />
@@ -431,6 +439,20 @@ export default function Usuarios() {
           setResetDe(null);
         }}
       />
+    </>
+  );
+}
+
+function UserCell({ u, esYo }) {
+  return (
+    <div className="person">
+      <Avatar nombre={u.nombre} size={36} />
+      <div className="person-text">
+        <span className="person-name">
+          {u.nombre} {esYo && <Pill tone="accent">Vos</Pill>}
+        </span>
+        <span className="person-sub mono">{u.username}</span>
+      </div>
     </div>
   );
 }

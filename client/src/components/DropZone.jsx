@@ -1,7 +1,8 @@
 import { useId, useRef, useState } from 'react';
+import { CloudUpload } from 'lucide-react';
 
-/** Zona de arrastrar y soltar archivos, con input file accesible por teclado. */
-export default function DropZone({ accept, multiple = false, onFiles, disabled, children }) {
+/** Zona grande de arrastrar y soltar, con input file accesible por teclado. */
+export default function DropZone({ accept, multiple = false, onFiles, disabled, title, hint, compact = false }) {
   const inputRef = useRef(null);
   const id = useId();
   const [over, setOver] = useState(false);
@@ -13,7 +14,7 @@ export default function DropZone({ accept, multiple = false, onFiles, disabled, 
 
   return (
     <div
-      className={`dropzone ${over ? 'is-over' : ''} ${disabled ? 'is-disabled' : ''}`}
+      className={`dropzone ${over ? 'is-over' : ''} ${disabled ? 'is-disabled' : ''} ${compact ? 'is-compact' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();
         if (!disabled) setOver(true);
@@ -38,13 +39,14 @@ export default function DropZone({ accept, multiple = false, onFiles, disabled, 
           e.target.value = '';
         }}
       />
-      <div className="dropzone-content">
-        <span className="dropzone-icon" aria-hidden="true">⇪</span>
-        <div>{children}</div>
-        <label htmlFor={id} className={`btn btn-secondary ${disabled ? 'is-disabled' : ''}`}>
-          {multiple ? 'Elegir archivos' : 'Elegir archivo'}
-        </label>
-      </div>
+      <span className="dropzone-icon" aria-hidden="true">
+        <CloudUpload size={26} />
+      </span>
+      <p className="dropzone-title">{title}</p>
+      {hint && <p className="dropzone-hint">{hint}</p>}
+      <label htmlFor={id} className={`btn btn-secondary ${disabled ? 'is-disabled' : ''}`}>
+        {multiple ? 'Elegir archivos' : 'Elegir archivo'}
+      </label>
     </div>
   );
 }

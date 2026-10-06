@@ -1,0 +1,87 @@
+/* Login del personal (tema claro) */
+
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(50% 40% at 50% 0%, rgb(79 70 229 / 0.08), transparent 70%),
+    var(--bg);
+}
+.login-wrap {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--night);
+  color: var(--gold);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+.login-brand h1 {
+  font-size: var(--fs-24);
+  font-weight: 700;
+}
+.login-brand p {
+  color: var(--text-3);
+  font-size: var(--fs-14);
+  margin-top: -6px;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-8) var(--sp-6);
+}
+@media (max-width: 400px) {
+  .login-card {
+    padding: var(--sp-6) var(--sp-5);
+  }
+}
+.login-card .btn-primary {
+  margin-top: var(--sp-6);
+  min-height: 44px;
+}
+.password-field {
+  position: relative;
+}
+.password-field input {
+  padding-right: 48px;
+}
+.password-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+}
+.login-foot {
+  text-align: center;
+  font-size: var(--fs-14);
+  color: var(--text-3);
+}
+.login-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.login-card .login-alert {
+  margin: 0 0 var(--sp-5);
+}

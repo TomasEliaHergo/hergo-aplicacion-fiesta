@@ -221,6 +221,26 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------
+-- Estado público de ingreso por qr_token (GET /api/public/estado/:token).
+-- Idéntica a db/migraciones/001_estado_por_token.sql (idempotente).
+-- ---------------------------------------------------------------------
+create or replace function appfiesta.estado_por_token(p_token text)
+returns table (nombre text, escaneado_at timestamptz)
+language sql
+stable
+set search_path = appfiesta, extensions, public
+as $$
+  select e.nombre, a.escaneado_at
+  from appfiesta.empleados e
+  left join appfiesta.asistencias a on a.empleado_id = e.id
+  where e.qr_token = p_token;
+$$;
+
+-- Solo el backend (service_role). EXECUTE a PUBLIC es el default global de Postgres: se revoca.
+revoke all on function appfiesta.estado_por_token(text) from public, anon, authenticated;
+grant execute on function appfiesta.estado_por_token(text) to service_role;
+
+-- ---------------------------------------------------------------------
 -- RLS: activado en todas las tablas, SIN policies.
 -- ---------------------------------------------------------------------
 alter table appfiesta.usuarios    enable row level security;

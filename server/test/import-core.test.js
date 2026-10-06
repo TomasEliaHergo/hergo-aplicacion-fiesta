@@ -102,18 +102,18 @@ test('enLotes', () => {
   assert.deepEqual(enLotes([], 500), []);
 });
 
-test('leerPrimeraHoja: CSV UTF-8 con BOM preserva texto', () => {
+test('leerPrimeraHoja: CSV UTF-8 con BOM preserva texto', async () => {
   const csv = Buffer.from('﻿DNI,Nombre y Apellido,Empresa\n01234567,José Ñandú,Hergo\n', 'utf8');
-  const { filas, primeraFila } = leerPrimeraHoja(csv, '.csv');
+  const { filas, primeraFila } = await leerPrimeraHoja(csv, '.csv');
   assert.equal(primeraFila, 1);
   assert.deepEqual(filas[0], ['DNI', 'Nombre y Apellido', 'Empresa']);
   assert.equal(filas[1][1], 'José Ñandú');
   assert.equal(String(filas[1][0]), '01234567');
 });
 
-test('Excel de ejemplo: se importa completo sin errores', () => {
+test('Excel de ejemplo: se importa completo sin errores', async () => {
   const buf = readFileSync(new URL('../scripts/ejemplo-empleados.xlsx', import.meta.url));
-  const { filas, primeraFila } = leerPrimeraHoja(buf, '.xlsx');
+  const { filas, primeraFila } = await leerPrimeraHoja(buf, '.xlsx');
   const [enc, ...datos] = filas;
   const { indices, faltantes } = mapearEncabezados(enc);
   assert.deepEqual(faltantes, []);

@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
+import { X } from 'lucide-react';
 
 /**
  * Diálogo modal accesible basado en <dialog> nativo
  * (foco atrapado, Escape para cerrar, fondo inerte).
  */
-export default function Modal({ open, title, onClose, children, footer, size = 'md' }) {
+export default function Modal({ open, title, onClose, children, footer, size = 'md', tone }) {
   const ref = useRef(null);
   const titleId = useId();
 
@@ -32,7 +33,7 @@ export default function Modal({ open, title, onClose, children, footer, size = '
   return (
     <dialog
       ref={ref}
-      className={`modal modal-${size}`}
+      className={`modal modal-${size}${tone ? ` modal-${tone}` : ''}`}
       aria-labelledby={titleId}
       onClick={(e) => {
         // click en el backdrop
@@ -43,8 +44,8 @@ export default function Modal({ open, title, onClose, children, footer, size = '
         <div className="modal-inner">
           <header className="modal-header">
             <h2 id={titleId}>{title}</h2>
-            <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar">
-              <span aria-hidden="true">×</span>
+            <button type="button" className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Cerrar">
+              <X size={18} aria-hidden="true" />
             </button>
           </header>
           <div className="modal-body">{children}</div>

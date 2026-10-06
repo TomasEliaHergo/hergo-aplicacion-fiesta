@@ -1,4 +1,3 @@
-import multer from 'multer';
 import path from 'node:path';
 import { errores } from '../lib/errors.js';
 
@@ -11,11 +10,28 @@ export const MIME_FOTOS = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EXT_FOTOS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const EXT_IMPORT = new Set(['.xlsx', '.xls', '.csv']);
 
+// multer (+ busboy) se carga recién en el primer upload: no pesa en el cold start
+// de los endpoints JSON. `crear(multer)` arma el middleware una sola vez.
+let multerPromise;
+const cargarMulter = () => (multerPromise ??= import('multer').then((m) => m.default)
+  .catch((err) => { multerPromise = undefined; throw err; }));
+
+function perezoso(crear) {
+  let mw;
+  return (req, res, next) => {
+    if (mw) return mw(req, res, next);
+    cargarMulter().then((multer) => {
+      mw ??= crear(multer);
+      mw(req, res, next);
+    }, next);
+  };
+}
+
 /** Foto individual: campo "foto", máx 4 MB. */
-export const uploadFoto = multer({
+export const uploadFoto = perezoso((multer) => multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FOTO_BYTES, files: 1, fields: 5 },
-}).single('foto');
+}).single('foto'));
 
 /**
  * Storage en memoria que NO aborta el request si un archivo supera el límite:
@@ -41,10 +57,10 @@ function memoriaConLimite(maxBytes) {
 }
 
 /** Fotos bulk: campo "fotos" o "fotos[]", hasta 300 archivos de 4 MB c/u (los más grandes se reportan, no abortan). */
-const fotosBulk = multer({
+const fotosBulk = perezoso((multer) => multer({
   storage: memoriaConLimite(MAX_FOTO_BYTES),
   limits: { fileSize: 50 * MB, files: 300, fields: 10 },
-}).fields([{ name: 'fotos', maxCount: 300 }, { name: 'fotos[]', maxCount: 300 }]);
+}).fields([{ name: 'fotos', maxCount: 300 }, { name: 'fotos[]', maxCount: 300 }]));
 
 export function uploadFotosBulk(req, res, next) {
   fotosBulk(req, res, (err) => {
@@ -55,7 +71,7 @@ export function uploadFotosBulk(req, res, next) {
 }
 
 /** Import: campo "archivo", .xlsx/.xls/.csv, máx 4 MB. */
-export const uploadImport = multer({
+export const uploadImport = perezoso((multer) => multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMPORT_BYTES, files: 1, fields: 5 },
   fileFilter(_req, file, cb) {
@@ -63,7 +79,7 @@ export const uploadImport = multer({
     if (!EXT_IMPORT.has(ext)) return cb(errores.tipoNoSoportado('El archivo debe ser .xlsx, .xls o .csv'));
     cb(null, true);
   },
-}).single('archivo');
+}).single('archivo'));
 
 /** ¿Es un tipo de imagen aceptado (por MIME o extensión)? La validación real la hace sharp al decodificar. */
 export function esImagenAceptada(file) {

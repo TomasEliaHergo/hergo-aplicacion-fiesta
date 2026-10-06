@@ -2,41 +2,41 @@ import { lazy, Suspense } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import RequireRole from './auth/RequireRole.jsx';
 import MiQR from './pages/public/MiQR.jsx';
-import Login from './pages/Login.jsx';
-import { Spinner } from './components/Feedback.jsx';
+import { loaders } from './routes.js';
 
-// El escáner (html5-qrcode) y el panel RRHH se cargan bajo demanda:
-// la página pública queda liviana para los celulares.
-const Scanner = lazy(() => import('./pages/scanner/Scanner.jsx'));
-const AdminLayout = lazy(() => import('./pages/rrhh/AdminLayout.jsx'));
-const Dashboard = lazy(() => import('./pages/rrhh/Dashboard.jsx'));
-const Empleados = lazy(() => import('./pages/rrhh/Empleados.jsx'));
-const Importar = lazy(() => import('./pages/rrhh/Importar.jsx'));
-const Fotos = lazy(() => import('./pages/rrhh/Fotos.jsx'));
-const Usuarios = lazy(() => import('./pages/rrhh/Usuarios.jsx'));
+// Solo la página pública va en el bundle inicial (es la que abren los invitados desde
+// el celular). Login, escáner (html5-qrcode) y panel RRHH se cargan bajo demanda.
+const Login = lazy(loaders.login);
+const Scanner = lazy(loaders.scanner);
+const AdminLayout = lazy(loaders.adminLayout);
+const Dashboard = lazy(loaders.dashboard);
+const Empleados = lazy(loaders.empleados);
+const Importar = lazy(loaders.importar);
+const Fotos = lazy(loaders.fotos);
+const Usuarios = lazy(loaders.usuarios);
 
 function NotFound() {
   return (
     <main className="center-page">
-      <div className="card narrow">
+      <div className="notfound">
         <h1>Página no encontrada</h1>
-        <p>
-          <Link to="/">Volver al inicio</Link>
-        </p>
+        <p className="muted">La dirección no existe o cambió.</p>
+        <Link to="/" className="btn btn-primary">
+          Volver al inicio
+        </Link>
       </div>
     </main>
   );
 }
 
+/** Fallback de Suspense: vacío (sin spinner) para no parpadear en cargas rápidas. */
+function PageFallback() {
+  return <div className="page-fallback" aria-busy="true" />;
+}
+
 export default function App() {
   return (
-    <Suspense
-      fallback={
-        <div className="center-page">
-          <Spinner />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route path="/" element={<MiQR />} />
         <Route path="/login" element={<Login />} />

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { CircleCheck, CircleX, Info, TriangleAlert } from 'lucide-react';
 import Modal from './Modal.jsx';
 
 // ---------- Toasts ----------
@@ -22,9 +23,7 @@ export function ToastProvider({ children }) {
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.tipo}`} role={t.tipo === 'error' ? 'alert' : undefined}>
-            <span className="toast-icon" aria-hidden="true">
-              {t.tipo === 'error' ? '✕' : '✓'}
-            </span>
+            {t.tipo === 'error' ? <CircleX size={18} aria-hidden="true" /> : <CircleCheck size={18} aria-hidden="true" />}
             <span>{t.mensaje}</span>
           </div>
         ))}
@@ -63,6 +62,7 @@ export function ConfirmProvider({ children }) {
         title={state?.titulo || 'Confirmar'}
         onClose={() => close(false)}
         size="sm"
+        tone={state?.peligro ? 'danger' : undefined}
         footer={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
@@ -89,11 +89,15 @@ export const useConfirm = () => useContext(ConfirmContext);
 
 // ---------- Alertas inline ----------
 
+const ALERT_ICON = { error: CircleX, warning: TriangleAlert, ok: CircleCheck, info: Info };
+
 export function Alert({ tipo = 'error', children, className = '', id }) {
   if (!children) return null;
+  const Icon = ALERT_ICON[tipo] || Info;
   return (
     <div id={id} className={`alert alert-${tipo} ${className}`} role={tipo === 'error' ? 'alert' : 'status'}>
-      {children}
+      <Icon size={18} aria-hidden="true" />
+      <div className="alert-body">{children}</div>
     </div>
   );
 }

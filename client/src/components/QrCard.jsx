@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import { Download } from 'lucide-react';
 import { downloadBlob } from '../api.js';
 import { slug } from '../utils.js';
 
@@ -8,7 +9,7 @@ const QR_PX = 640; // resolución interna del canvas (se muestra escalado por CS
 function fitFont(ctx, text, maxWidth, startPx, weight = '700') {
   let px = startPx;
   do {
-    ctx.font = `${weight} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.font = `${weight} ${px}px "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
     if (ctx.measureText(text).width <= maxWidth) break;
     px -= 2;
   } while (px > 14);
@@ -31,7 +32,7 @@ function generarPng(qrCanvas, nombre, empresa) {
   ctx.fillRect(0, 0, W, H);
 
   // Franja superior
-  ctx.fillStyle = '#14213d';
+  ctx.fillStyle = '#0a0f1f';
   ctx.fillRect(0, 0, W, 90);
   ctx.fillStyle = '#f2c14e';
   ctx.textAlign = 'center';
@@ -80,7 +81,19 @@ async function guardarPng(blob, filename) {
   downloadBlob(blob, filename);
 }
 
-export default function QrCard({ value, nombre, empresa }) {
+/**
+ * QR de ingreso en tarjeta blanca (alto contraste + zona de silencio) y botón para guardarlo.
+ * `showMeta`: muestra nombre/empresa debajo (en la página pública ya están en el encabezado).
+ */
+export default function QrCard({
+  value,
+  nombre,
+  empresa,
+  showMeta = true,
+  buttonLabel = 'Descargar QR',
+  buttonClassName = 'btn btn-primary btn-block',
+  className = '',
+}) {
   const wrapRef = useRef(null);
   const pngRef = useRef(null); // Promise<Blob> generado por adelantado
 
@@ -99,7 +112,7 @@ export default function QrCard({ value, nombre, empresa }) {
   };
 
   return (
-    <div className="qr-card">
+    <div className={`qr-card ${className}`}>
       <div className="qr-frame" ref={wrapRef}>
         <QRCodeCanvas
           value={value}
@@ -112,11 +125,16 @@ export default function QrCard({ value, nombre, empresa }) {
           role="img"
           aria-label={`Código QR de ingreso de ${nombre}`}
         />
+        {showMeta && (
+          <div className="qr-meta">
+            <p className="qr-name">{nombre}</p>
+            {empresa && <p className="qr-company">{empresa}</p>}
+          </div>
+        )}
       </div>
-      <p className="qr-name">{nombre}</p>
-      {empresa && <p className="qr-company">{empresa}</p>}
-      <button type="button" className="btn btn-accent btn-block" onClick={onDownload}>
-        Descargar QR
+      <button type="button" className={buttonClassName} onClick={onDownload}>
+        <Download size={18} aria-hidden="true" />
+        {buttonLabel}
       </button>
     </div>
   );

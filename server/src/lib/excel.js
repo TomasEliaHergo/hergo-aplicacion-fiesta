@@ -1,10 +1,13 @@
-import * as XLSX from 'xlsx';
+// SheetJS se carga recién al usarlo (import / export): no pesa en el cold start del resto de la API.
+let xlsxPromise;
+const cargarXlsx = () => (xlsxPromise ??= import('xlsx').catch((err) => { xlsxPromise = undefined; throw err; }));
 
 /**
  * Lee la primera hoja de un .xlsx/.xls/.csv como matriz de celdas.
  * Devuelve { filas, primeraFila } donde primeraFila es el número de fila Excel de filas[0].
  */
-export function leerPrimeraHoja(buffer, extension) {
+export async function leerPrimeraHoja(buffer, extension) {
+  const XLSX = await cargarXlsx();
   let wb;
   if (extension === '.csv') {
     // CSV: decodificar como UTF-8 (sin BOM) y no convertir tipos (preserva ceros a la izquierda).
@@ -28,7 +31,8 @@ export function leerPrimeraHoja(buffer, extension) {
  * Genera un .xlsx con varias hojas a partir de arrays de objetos.
  * @param {{nombre:string, filas:object[], encabezados:string[], anchos?:number[]}[]} hojas
  */
-export function generarXlsx(hojas) {
+export async function generarXlsx(hojas) {
+  const XLSX = await cargarXlsx();
   const wb = XLSX.utils.book_new();
   for (const h of hojas) {
     const ws = XLSX.utils.json_to_sheet(h.filas, { header: h.encabezados });

@@ -16,7 +16,7 @@ const loginBody = z.object({
 router.post('/login', limiteLogin(), validate({ body: loginBody }), async (req, res) => {
   const { username, password } = req.valid.body;
   try {
-    const usuario = await usuarios.login(username, password);
+    const usuario = await usuarios.login(username, password, req.log);
     const { token, expiraEn } = firmarToken(usuario);
     req.log.info({ usuarioId: usuario.id }, 'Login OK');
     res.json({ token, expiraEn, usuario });

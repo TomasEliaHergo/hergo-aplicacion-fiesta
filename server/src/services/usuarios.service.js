@@ -1,17 +1,29 @@
 import { getSupabase } from '../lib/supabase.js';
 import { AppError, check, errores } from '../lib/errors.js';
-import { hashPassword, verificarPassword } from '../lib/passwords.js';
-import { invalidarCacheUsuario } from '../middleware/requireAuth.js';
+import { hashPassword, verificarPassword, necesitaRehash } from '../lib/passwords.js';
+import { recordarUsuario } from '../middleware/requireAuth.js';
 
 export const COLS_USUARIO = 'id, username, nombre, rol, activo, created_at';
 
-export async function login(username, password) {
+export async function login(username, password, log) {
   const u = check(await getSupabase().from('usuarios')
     .select(`${COLS_USUARIO}, password_hash`).eq('username', username.toLowerCase()).maybeSingle());
   // Siempre se ejecuta bcrypt (hash señuelo si no existe) para no filtrar por tiempos.
   const ok = await verificarPassword(password, u?.password_hash);
   if (!u || !ok || !u.activo) throw new AppError(401, 'CREDENCIALES_INVALIDAS', 'Usuario o contraseña incorrectos');
-  const { password_hash: _omit, ...usuario } = u;
+  const { password_hash, ...usuario } = u;
+  if (necesitaRehash(password_hash)) {
+    // Hash viejo (costo 12): se migra al costo actual para que los próximos logins sean rápidos.
+    // Best effort: si falla, el login igual sale bien.
+    try {
+      const nuevo = await hashPassword(password);
+      const { error } = await getSupabase().from('usuarios').update({ password_hash: nuevo }).eq('id', u.id);
+      if (error) throw error;
+    } catch (err) {
+      log?.warn({ err, usuarioId: u.id }, 'No se pudo rehashear la contraseña');
+    }
+  }
+  recordarUsuario(usuario);
   return usuario;
 }
 
@@ -55,12 +67,15 @@ export function evaluarCambioUsuario(actual, cambios, actorId) {
 }
 
 export async function actualizar(id, cambios, actor) {
-  const actual = await obtener(id);
+  // Si el cambio podría dejar sin RRHH activos, el conteo se pide en paralelo con la
+  // lectura del usuario (1 round trip de latencia en vez de 2).
+  const puedeQuitarRrhh = cambios.rol !== undefined || cambios.activo === false;
+  const [actual, rrhhActivos] = await Promise.all([obtener(id), puedeQuitarRrhh ? contarRrhhActivos() : null]);
   const regla = evaluarCambioUsuario(actual, cambios, actor.id);
   if (regla === 'OPERACION_SOBRE_SI_MISMO') {
     throw new AppError(409, 'OPERACION_SOBRE_SI_MISMO', 'No podés desactivarte ni cambiarte el rol a vos mismo');
   }
-  if (regla === 'VERIFICAR_ULTIMO_RRHH' && (await contarRrhhActivos()) <= 1) {
+  if (regla === 'VERIFICAR_ULTIMO_RRHH' && rrhhActivos <= 1) {
     throw new AppError(409, 'ULTIMO_RRHH', 'No se puede quitar al último usuario RRHH activo');
   }
   const payload = {};
@@ -68,7 +83,7 @@ export async function actualizar(id, cambios, actor) {
   if (Object.keys(payload).length === 0) return actual;
   const u = check(await getSupabase().from('usuarios').update(payload).eq('id', id).select(COLS_USUARIO).maybeSingle());
   if (!u) throw errores.noEncontrado('Usuario no encontrado');
-  invalidarCacheUsuario(id);
+  recordarUsuario(u); // en esta instancia el cambio (rol/activo) aplica de inmediato
   return u;
 }
 

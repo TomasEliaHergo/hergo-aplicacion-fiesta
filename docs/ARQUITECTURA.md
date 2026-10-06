@@ -32,13 +32,14 @@ App chica, monolito: **un** backend Express + **un** frontend React. Sin microse
 
 ## Autenticación (propia, no Supabase Auth)
 
-- **Login**: `POST /api/auth/login` → bcrypt (`bcryptjs`, cost 12) contra `usuarios.password_hash`. Mismo error para usuario inexistente, inactivo o password incorrecta (`CREDENCIALES_INVALIDAS`).
-- **JWT** HS256 firmado con `JWT_SECRET` (>= 32 bytes aleatorios), expira en **10h**. Claims: `{ sub: usuarioId, rol, nombre }`.
+- **Login**: `POST /api/auth/login` → bcrypt (`bcryptjs`, **cost 10**; antes 12) contra `usuarios.password_hash`. Los hashes viejos de costo 12 siguen verificando (el costo va dentro del hash) y se rehashean a costo 10 en el primer login correcto (best effort). El hash señuelo para usuarios inexistentes está precalculado (antes se generaba con `hashSync` al importar el módulo: ~0,2-0,9 s de cold start). Mismo error para usuario inexistente, inactivo o password incorrecta (`CREDENCIALES_INVALIDAS`).
+- **JWT** HS256 firmado con `JWT_SECRET` (>= 32 bytes aleatorios), expira en **10h**. Claims: `{ sub: usuarioId, rol, nombre, iat, exp }`. Implementado con `node:crypto` en `src/lib/jwt.js` (sin `jsonwebtoken`, que sumaba carga al cold start); solo acepta `alg: HS256` y es compatible con los tokens ya emitidos.
 - **Transporte**: header `Authorization: Bearer <jwt>`. El cliente lo guarda en `sessionStorage` (sin cookies => sin CSRF; CSP estricta para mitigar XSS).
-- **`requireAuth(roles)`**: valida firma/expiración, luego consulta `usuarios` por `sub` (cache en memoria 60s) para verificar `activo` y que el `rol` siga igual. Así desactivar un usuario corta su acceso en <= 1 min. Fallo → `401 NO_AUTENTICADO`; rol no permitido → `403 SIN_PERMISO`.
+- **`requireAuth(roles)`**: valida firma/expiración y decide de dónde sale el usuario, **sin round trip a la DB en la mayoría de los requests**: (1) cache por instancia de < 5 min → se usa; (2) si no, token emitido hace < 5 min (`iat`) → se confía en los claims `rol`/`nombre` (el login ya exigió `activo`); (3) si no → consulta `usuarios` por `sub` y cachea 5 min. Verifica `activo` y que el `rol` siga igual al del token. Fallo → `401 NO_AUTENTICADO`; rol no permitido → `403 SIN_PERMISO`.
+  - **Trade-off aceptado**: un usuario desactivado (o con rol cambiado) puede seguir operando **hasta 5 min** en las instancias serverless que no procesaron el cambio. En la instancia que atendió el `PUT /api/usuarios/:id` aplica de inmediato. Antes era <= 1 min, a costa de un round trip serie a Supabase (~150 ms) en casi todo request en Vercel, donde el cache en memoria casi nunca pega.
 - **Seed**: `npm run seed:admin -- --username admin --nombre "Admin RRHH"`; password desde `SEED_ADMIN_PASSWORD` (o prompt). Falla si el username ya existe.
 - **Reglas**: RRHH no puede desactivarse ni cambiarse el rol a sí mismo; no se puede desactivar al último RRHH activo (`409 ULTIMO_RRHH`). Password mínimo 8 caracteres.
-- **Rate limit** (`express-rate-limit`, `app.set('trust proxy', 1)`): login 10/min por IP; `/api/public/qr` 20/min por IP; global 300/min por IP.
+- **Rate limit** (`express-rate-limit`, `app.set('trust proxy', 1)`): login 10/min por IP; `/api/public/qr` 20/min por IP; `/api/public/estado/:token` 60/min por IP; global 300/min por IP.
 
 ## Convenciones de la API
 
@@ -76,7 +77,10 @@ Objeto `Usuario`: `{ "id", "username", "nombre", "rol": "rrhh|scanner", "activo"
 ### Público
 | Método | Path | Auth | Body | Respuesta / errores |
 |---|---|---|---|---|
-| POST | `/api/public/qr` | - (rate limit IP) | `{documento}` (se normaliza) | `200 {nombre, empresa, qr_token}` · `404 {error:"NO_ENCONTRADO"}` · `400 VALIDACION` · `429` |
+| POST | `/api/public/qr` | - (rate limit IP 20/min) | `{documento}` (se normaliza) | `200 {nombre, empresa, qr_token, ingreso: boolean, escaneado_at: string\|null}` · `404 {error:"NO_ENCONTRADO"}` · `400 VALIDACION` · `429` |
+| GET | `/api/public/estado/:token` | - (rate limit IP 60/min) | - | `200 {nombre, ingreso: boolean, escaneado_at: string\|null}` · `404 {error:"NO_ENCONTRADO", mensaje}` (token inexistente **o** con formato inválido: se valida `^[A-Za-z0-9_-]{43}$` antes de ir a la DB) · `429` |
+
+Ambos responden `Cache-Control: no-store`. `escaneado_at` = hora del (primer) ingreso en ISO-8601, `null` si no ingresó. `estado` es para la pantalla de bienvenida (el cliente hace polling cada 5 s) y es 1 round trip (RPC `estado_por_token`, ver Migraciones); `qr` hace 2 consultas **en paralelo** (tabla + vista por documento), 1 round trip de latencia.
 
 El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descargar imagen".
 
@@ -96,7 +100,7 @@ El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descarga
 | Método | Path | Body / query | Respuesta / errores |
 |---|---|---|---|
 | GET | `/api/empleados` | `?q=&empresa=&sector=&asistio=true\|false&page=&pageSize=&orden=nombre\|escaneado_at` | `200 {items: Empleado[], total, page, pageSize}`. `q` busca en nombre (ilike, trigram) o documento (prefijo). |
-| GET | `/api/empleados/filtros` | - | `200 {empresas: string[], sectores: string[]}` (para combos) |
+| GET | `/api/empleados/filtros` | - | `200 {empresas: string[], sectores: string[]}` (para combos). `Cache-Control: private, max-age=10`. |
 | GET | `/api/empleados/:id` | - | `200 Empleado` · `404` |
 | POST | `/api/empleados` | `{documento, nombre, empresa?, sector?}` | `201 Empleado` · `409 DUPLICADO` (documento) |
 | PUT | `/api/empleados/:id` | `{documento?, nombre?, empresa?, sector?}` | `200 Empleado` · `404` · `409 DUPLICADO` |
@@ -117,6 +121,7 @@ El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descarga
 | Método | Path | Body / query | Respuesta / errores |
 |---|---|---|---|
 | GET | `/api/asistencias/resumen` | - | `200` (ver abajo) |
+| GET | `/api/asistencias/panel` | - | `200 { resumen, filtros }` = `resumen` (forma de abajo) + `filtros` (forma de `/api/empleados/filtros`) en **un** request (consultas en paralelo) para el primer pintado del dashboard. `Cache-Control: private, max-age=10`. Los endpoints viejos siguen. |
 | GET | `/api/asistencias/export` | `?empresa=&sector=` | `200` archivo `asistencia-YYYY-MM-DD-HHmm.xlsx` con hojas `Presentes` y `Ausentes` (documento, nombre, empresa, sector, hora ingreso AR, escaneado por) |
 | DELETE | `/api/asistencias/:empleadoId` | - | `204` · `404 NO_ENCONTRADO` (no tenía ingreso). Se loguea quién deshizo. |
 
@@ -150,13 +155,14 @@ aplicacion-asistencia-fiesta/
 ├─ server/
 │  ├─ package.json              # "type":"module"; scripts: dev, start, seed:admin
 │  ├─ .env.example              # SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET, PORT, CORS_ORIGIN, SEED_ADMIN_PASSWORD
-│  ├─ db/schema.sql
+│  ├─ db/schema.sql            # instalación nueva (incluye todas las migraciones)
+│  ├─ db/migraciones/          # NNN_*.sql idempotentes para bases ya creadas (correr a mano en Supabase; el modo local las aplica solo)
 │  ├─ scripts/seed-admin.js
 │  └─ src/
 │     ├─ index.js               # arranque, lee env y valida (zod)
 │     ├─ app.js                 # express, helmet, cors, pino-http, rate limits, rutas, error handler
 │     ├─ config.js
-│     ├─ lib/                   # supabase.js, jwt.js, passwords.js, documento.js, storage.js, excel.js, errors.js
+│     ├─ lib/                   # supabase.js, jwt.js (HS256 con node:crypto), passwords.js, documento.js, storage.js, excel.js, errors.js
 │     ├─ middleware/            # requireAuth.js, validate.js, upload.js (multer memoryStorage), errorHandler.js
 │     ├─ routes/                # auth.js, public.js, scan.js, empleados.js, asistencias.js, usuarios.js
 │     └─ services/              # empleados.service.js, import.service.js, fotos.service.js, asistencias.service.js, usuarios.service.js
@@ -181,7 +187,7 @@ aplicacion-asistencia-fiesta/
 - `helmet`, CORS restringido a `CORS_ORIGIN`, `express.json({limit:'100kb'})`, multer con límites de tamaño/cantidad y validación de MIME + decodificación real con `sharp`.
 - Riesgo aceptado: quien conozca un DNI ajeno puede obtener su QR (decisión de producto). Mitigado con rate limit; el QR solo sirve una vez.
 - Logs JSON con `pino` + `requestId` (header `X-Request-Id`); sin passwords ni tokens en logs. Se loguean scans, imports, undo de asistencias y cambios de usuarios con el `usuarioId`.
-- Carga esperada: ~1000 empleados, picos de ~5 scans/s en la entrada. Una instancia sobra; el servidor es stateless (JWT), así que escala horizontal si hiciera falta (el cache de usuarios de 60s es por instancia, aceptable).
+- Carga esperada: ~1000 empleados, picos de ~5 scans/s en la entrada. Una instancia sobra; el servidor es stateless (JWT), así que escala horizontal si hiciera falta (el cache de usuarios de 5 min es por instancia; ver trade-off en Autenticación).
 - En Vercel (serverless) el rate limit de `express-rate-limit` es **en memoria por instancia**: con varias instancias calientes el límite efectivo es N × el configurado, y se reinicia en cada cold start. Aceptado para esta app (el objetivo es frenar abuso grosero, no un límite exacto); si hiciera falta uno global, usar un store compartido (Redis/Upstash).
 
 ## Cambios de implementación (backend)
@@ -220,3 +226,51 @@ Un solo proyecto de Vercel desde la raíz del repo:
 - La función **exige** `DB_MODE=supabase` (si `DB_MODE` viene con otro valor, falla al iniciar con un error claro; si no viene, se fuerza `supabase`) y valida `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `JWT_SECRET`. `NODE_ENV` default `production`.
 - Las dependencias se resuelven desde `server/node_modules` (el file tracer sigue los imports de `server/src`); la raíz no tiene dependencias. PGlite queda fuera del bundle: se importa con un specifier no analizable y además `excludeFiles` excluye `server/node_modules/@electric-sql/**`, `server/.data/**` y `client/**`.
 - `maxDuration: 30` s. Frontend y API comparten dominio: CORS no interviene (mismo origen) y `trust proxy` ya está en 1. Rate limit por instancia (ver arriba).
+
+## Migraciones de base de datos
+
+`db/schema.sql` es para una base **nueva** (se corre una vez) y ya incluye todo. Los cambios posteriores van **además** en `db/migraciones/NNN_descripcion.sql`, idempotentes (`create or replace`, `if not exists`), con permisos solo para `service_role`:
+
+| Archivo | Qué agrega | Cómo aplicarlo |
+|---|---|---|
+| `db/migraciones/001_estado_por_token.sql` | Función `appfiesta.estado_por_token(p_token text) returns table (nombre, escaneado_at)` para `GET /api/public/estado/:token` | **Supabase** (base ya creada): pegar el archivo completo en el SQL Editor y ejecutar (termina con `notify pgrst, 'reload schema'`). Mientras no se corra, el endpoint funciona igual pero con 2 consultas en serie y un warning en el log. **Local**: automático. |
+
+El modo local aplica todos los `db/migraciones/*.sql` (orden alfabético) en **cada** arranque, después de crear el esquema si hacía falta; por eso deben ser idempotentes.
+
+## Rendimiento (Vercel + Supabase)
+
+Cada round trip a Supabase cuesta ~120-200 ms desde Argentina (más si la función corre lejos de la base, ver región abajo), así que se minimizan los round trips **en serie** por request.
+
+**Cold start.** `api/index.js` solo carga lo necesario para los endpoints JSON. Se cargan con `import()` perezoso la primera vez que se usan: `sharp` (fotos), `xlsx`/SheetJS (import/export) y `multer` (uploads). Se quitó `jsonwebtoken` y el `bcrypt.hashSync` que corría al importar. Medido en una PC Windows (`await import('./api/index.js')` con env falsa, mediana de 12 procesos): **~1410 ms → ~710 ms**.
+
+**Round trips en serie por request (Supabase), antes → ahora.** "auth" = `requireAuth`: ahora es 0 si el token tiene < 5 min o hay cache de < 5 min en la instancia, y 1 si no.
+
+| Endpoint | Antes | Ahora |
+|---|---|---|
+| `POST /api/auth/login` | 1 (+ bcrypt costo 12) | 1 (+ bcrypt costo 10; +1 una sola vez por usuario para rehashear hashes viejos) |
+| `GET /api/auth/me` | 1 auth + 1 | 0-1 auth + 1 |
+| `POST /api/public/qr` | 1 | 1 (2 consultas en paralelo) |
+| `GET /api/public/estado/:token` | - | 1 (0 si el formato es inválido) |
+| `POST /api/scan` | 1 auth + 1 RPC | 0-1 auth + 1 RPC |
+| `GET /api/empleados` (con `total`) | 1 auth + 1 | 0-1 auth + 1 |
+| `GET /api/empleados/filtros` | 1 auth + 1 | 0-1 auth + 1 (+ cache del navegador 10 s) |
+| `GET /api/asistencias/resumen` | 1 auth + 1 | 0-1 auth + 1 |
+| Dashboard inicial (resumen + filtros) | 2 requests: 2 auth + 2 | **`/panel`**: 1 request, 0-1 auth + 1 (2 consultas en paralelo) |
+| `POST /api/empleados` | 1 auth + 2 | 0-1 auth + 1 (insert ... returning) |
+| `PUT /api/empleados/:id` | 1 auth + 2 | 0-1 auth + 1 (update y lectura de asistencia en paralelo) |
+| `DELETE /api/empleados/:id` | 1 auth + 2 (+ Storage) | 0-1 auth + 1 (delete ... returning foto_path) (+ Storage) |
+| `POST /api/empleados/:id/foto` | 1 auth + 1 + sharp + Storage + 1 + Storage + 1 | igual, pero la lectura corre en paralelo con sharp |
+| `PUT /api/usuarios/:id` (desactivar / cambiar rol) | 1 auth + 3 | 0-1 auth + 2 (lectura y conteo de RRHH en paralelo) |
+| Import | lotes de lectura y de upsert en serie | lotes de lectura en paralelo; inserts y updates en paralelo |
+
+**Región de la función (importante).** Si la función de Vercel corre en una región distinta a la de la base, **cada** round trip suma la distancia entre ambas (p. ej. Washington ↔ São Paulo ≈ +120 ms por consulta). La región de la función debe coincidir con la de Supabase:
+
+1. Ver la región de la base: Supabase Dashboard → Project Settings → General → **Region** (p. ej. `sa-east-1` São Paulo, `us-east-1` N. Virginia).
+2. Elegir la región de Vercel equivalente: `sa-east-1` → `gru1` (São Paulo); `us-east-1` → `iad1` (Washington D.C.); `us-east-2` → `cle1`; `us-west-1` → `sfo1`; `eu-central-1` → `fra1`; `eu-west-1` → `dub1`.
+3. Configurarla de **una** de estas formas y redeployar:
+   - Vercel Dashboard → Project → Settings → **Functions** → *Function Region*; o
+   - agregar en la raíz de `vercel.json` `"regions": ["gru1"]` (con el código que corresponda).
+
+`vercel.json` **no** fija la región a propósito: depende de dónde se creó el proyecto de Supabase y no se puede adivinar.
+
+**Cache HTTP.** `/api/empleados/filtros` y `/api/asistencias/panel` → `Cache-Control: private, max-age=10` (solo el navegador, nunca un CDN compartido). Todo lo demás de `/api` → `no-store`, en particular los endpoints públicos.

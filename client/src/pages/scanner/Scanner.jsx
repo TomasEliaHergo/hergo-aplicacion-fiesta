@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { CameraOff, CircleCheck, LayoutDashboard, LogOut, RotateCcw, ScanLine, Volume2, VolumeX } from 'lucide-react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import Avatar from '../../components/Avatar.jsx';
-import { formatDocumento, formatHora } from '../../utils.js';
+import { useConfirm } from '../../components/Feedback.jsx';
+import { useDocumentTitle, useTheme } from '../../hooks/hooks.js';
+import { formatDocumento, formatHora, formatNumero } from '../../utils.js';
+import '../../styles/scanner.css';
 
 const AUTO_RESUME_MS = 4000;
 const DEBOUNCE_MISMO_TOKEN_MS = 5000;
@@ -201,6 +205,7 @@ function ResultCard({ resultado, onNext, autoResume }) {
 
       <div className="scan-next-bar">
         <button ref={btnRef} type="button" className="btn btn-scan-next" onClick={onNext}>
+          <ScanLine size={24} aria-hidden="true" />
           Escanear siguiente
         </button>
       </div>
@@ -214,7 +219,10 @@ function ResultCard({ resultado, onNext, autoResume }) {
 // ---------- Página ----------
 
 export default function Scanner() {
+  useTheme('scanner');
+  useDocumentTitle('Escáner - Fiesta de fin de año');
   const { usuario, logout } = useAuth();
+  const confirm = useConfirm();
   const containerRef = useRef(null);
   const qrRef = useRef(null);
   const busyRef = useRef(false);
@@ -228,11 +236,8 @@ export default function Scanner() {
   const [resultado, setResultado] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const [sonido, setSonido] = useState(true);
-  const [contador, setContador] = useState(0);
-
-  useEffect(() => {
-    document.title = 'Escáner - Fiesta de fin de año';
-  }, []);
+  const [contador, setContador] = useState(0); // ingresos OK en esta sesión
+  const [escaneos, setEscaneos] = useState(0); // lecturas totales en esta sesión
 
   useEffect(() => {
     sonidoRef.current = sonido;
@@ -293,6 +298,7 @@ export default function Scanner() {
       }
 
       if (res.estado === 'OK') setContador((c) => c + 1);
+      setEscaneos((c) => c + 1);
       feedback(res.estado, sonidoRef.current);
       setResultado(res);
       clearTimeout(resumeTimer.current);
@@ -379,40 +385,54 @@ export default function Scanner() {
     setCamKey((k) => k + 1);
   };
 
+  const salir = async () => {
+    const ok = await confirm({
+      titulo: 'Cerrar sesión del escáner',
+      mensaje: 'Vas a tener que volver a ingresar usuario y contraseña para seguir escaneando.',
+      confirmar: 'Cerrar sesión',
+      peligro: true,
+    });
+    if (ok) logout();
+  };
+
   return (
     <div className="scanner-page">
       <header className="scanner-bar">
-        <div className="scanner-user">
+        <div className="scanner-who">
+          <span className="scanner-dot" aria-hidden="true" />
           <strong>{usuario?.nombre}</strong>
-          <span className="scanner-count" aria-label={`${contador} ingresos registrados en esta sesión`}>
-            {contador} ingresos
-          </span>
         </div>
+        <p
+          className="scanner-count"
+          aria-label={`${contador} ingresos registrados y ${escaneos} lecturas en esta sesión`}
+          title="Ingresos registrados en esta sesión"
+        >
+          <CircleCheck size={16} aria-hidden="true" />
+          <span className="tabular">{formatNumero(contador)}</span>
+          <span className="scanner-count-label">ingresos</span>
+          {escaneos > contador && <span className="scanner-count-total tabular">/ {formatNumero(escaneos)}</span>}
+        </p>
         <div className="scanner-actions">
           <button
             type="button"
-            className="btn btn-ghost"
+            className="scanner-btn"
             aria-pressed={sonido}
+            aria-label={sonido ? 'Sonido activado' : 'Sonido desactivado'}
+            title={sonido ? 'Sonido activado' : 'Sonido desactivado'}
             onClick={() => {
               getAudio();
               setSonido((s) => !s);
             }}
           >
-            {sonido ? 'Sonido: sí' : 'Sonido: no'}
+            {sonido ? <Volume2 size={20} aria-hidden="true" /> : <VolumeX size={20} aria-hidden="true" />}
           </button>
           {usuario?.rol === 'rrhh' && (
-            <Link to="/admin" className="btn btn-ghost">
-              Panel
+            <Link to="/admin" className="scanner-btn" aria-label="Ir al panel" title="Ir al panel">
+              <LayoutDashboard size={20} aria-hidden="true" />
             </Link>
           )}
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              if (window.confirm('¿Cerrar sesión del escáner?')) logout();
-            }}
-          >
-            Salir
+          <button type="button" className="scanner-btn" onClick={salir} aria-label="Salir" title="Salir">
+            <LogOut size={20} aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -420,8 +440,19 @@ export default function Scanner() {
       <main className="scanner-main">
         <div className="scanner-video" ref={containerRef} aria-label="Vista de la cámara" />
 
+        {camEstado === 'activa' && !resultado && (
+          <div className="scan-frame" aria-hidden="true">
+            <span className="scan-corner tl" />
+            <span className="scan-corner tr" />
+            <span className="scan-corner bl" />
+            <span className="scan-corner br" />
+            <span className="scan-line" />
+          </div>
+        )}
+
         {camEstado === 'iniciando' && (
           <div className="scanner-overlay-msg" role="status">
+            <span className="spinner" aria-hidden="true" />
             Iniciando cámara…
           </div>
         )}
@@ -441,8 +472,12 @@ export default function Scanner() {
 
         {camEstado === 'error' && (
           <div className="scanner-error" role="alert">
+            <span className="scanner-error-icon" aria-hidden="true">
+              <CameraOff size={32} />
+            </span>
             <p>{camError}</p>
-            <button type="button" className="btn btn-accent" onClick={reintentarCamara}>
+            <button type="button" className="btn btn-primary btn-lg" onClick={reintentarCamara}>
+              <RotateCcw size={18} aria-hidden="true" />
               Reintentar
             </button>
           </div>

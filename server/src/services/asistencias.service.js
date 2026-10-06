@@ -65,7 +65,7 @@ export async function exportar({ empresa, sector }) {
     .sort((a, b) => String(a.escaneado_at).localeCompare(String(b.escaneado_at))).map(aFila);
   const ausentes = filas.filter((r) => !r.asistio).map(aFila);
   const anchos = [14, 34, 20, 20, 20, 18];
-  const buffer = generarXlsx([
+  const buffer = await generarXlsx([
     { nombre: 'Presentes', filas: presentes, encabezados, anchos },
     { nombre: 'Ausentes', filas: ausentes, encabezados, anchos },
   ]);

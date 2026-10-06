@@ -1,4 +1,3 @@
-import multer from 'multer';
 import { AppError } from '../lib/errors.js';
 
 export function notFoundApi(_req, _res, next) {
@@ -8,7 +7,8 @@ export function notFoundApi(_req, _res, next) {
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, _next) {
   let e = err;
-  if (err instanceof multer.MulterError) {
+  // Por nombre y no con instanceof multer.MulterError: multer se carga de forma perezosa.
+  if (err?.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') e = new AppError(413, 'ARCHIVO_MUY_GRANDE', 'El archivo supera el tamaño máximo permitido');
     else if (err.code === 'LIMIT_FILE_COUNT') e = new AppError(413, 'ARCHIVO_MUY_GRANDE', 'Demasiados archivos en una sola subida');
     else if (err.code === 'LIMIT_UNEXPECTED_FILE') e = new AppError(400, 'VALIDACION', 'Campo de archivo inesperado', [{ campo: err.field ?? 'archivo', motivo: 'Campo no esperado' }]);

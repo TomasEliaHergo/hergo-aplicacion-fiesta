@@ -9,6 +9,8 @@ import {
   setUnauthorizedHandler,
   updateStoredUser,
 } from '../api.js';
+import { clearCache } from '../hooks/useApi.js';
+import { prefetchForRole } from '../routes.js';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +21,7 @@ export function AuthProvider({ children }) {
   // 401 en cualquier request autenticado -> sesión vencida/desactivada.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      clearCache();
       setUsuario(null);
       navigate('/login', { replace: true, state: { expirada: true } });
     });
@@ -35,6 +38,7 @@ export function AuthProvider({ children }) {
         if (cancel || !u) return;
         updateStoredUser(u);
         setUsuario(u);
+        prefetchForRole(u.rol);
       })
       .catch(() => {
         /* 401 lo maneja el handler; errores de red: se mantiene la sesión local */
@@ -46,14 +50,17 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     clearSession();
+    clearCache();
     const data = await api.post('/auth/login', { username, password });
     setSession(data.token, data.usuario);
     setUsuario(data.usuario);
+    prefetchForRole(data.usuario?.rol);
     return data.usuario;
   }, []);
 
   const logout = useCallback(() => {
     clearSession();
+    clearCache();
     setUsuario(null);
     navigate('/login', { replace: true });
   }, [navigate]);

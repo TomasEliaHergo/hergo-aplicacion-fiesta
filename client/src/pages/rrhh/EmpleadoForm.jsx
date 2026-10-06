@@ -107,7 +107,7 @@ export default function EmpleadoForm({ open, empleado, filtros, onClose, onSaved
           <p className="muted small">Cambiar los datos no cambia el QR: el código ya entregado sigue sirviendo.</p>
         )}
         <Alert>{errorGeneral}</Alert>
-        <div className="modal-footer inline">
+        <div className="form-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancelar
           </button>

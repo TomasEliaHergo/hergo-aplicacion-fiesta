@@ -4,6 +4,7 @@ import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { queryOpcional } from '../lib/schemas.js';
 import * as asistencias from '../services/asistencias.service.js';
+import { filtros } from '../services/empleados.service.js';
 
 const router = Router();
 router.use(requireAuth(['rrhh']));
@@ -11,6 +12,13 @@ router.use(requireAuth(['rrhh']));
 router.get('/resumen', async (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await asistencias.resumen());
+});
+
+/** Primer pintado del dashboard en UN request: { resumen, filtros } (consultas en paralelo). */
+router.get('/panel', async (_req, res) => {
+  const [resumen, filtrosEmpleados] = await Promise.all([asistencias.resumen(), filtros()]);
+  res.set('Cache-Control', 'private, max-age=10');
+  res.json({ resumen, filtros: filtrosEmpleados });
 });
 
 const exportQuery = z.object({

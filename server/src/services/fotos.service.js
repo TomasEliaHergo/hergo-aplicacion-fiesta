@@ -1,4 +1,3 @@
-import sharp from 'sharp';
 import { getSupabase } from '../lib/supabase.js';
 import { AppError, check } from '../lib/errors.js';
 import { nuevoFotoPath, subirFoto, borrarFotos } from '../lib/storage.js';
@@ -7,11 +6,21 @@ import { enLotes } from '../lib/import-core.js';
 import { esImagenAceptada } from '../middleware/upload.js';
 import { obtenerFila, obtener } from './empleados.service.js';
 
-sharp.cache(false);
-sharp.concurrency(2);
+// sharp (binario nativo, ~300 ms de carga) se importa recién al procesar la primera
+// foto: así no pesa en el cold start de la función para el resto de los endpoints.
+let sharpPromise;
+function cargarSharp() {
+  sharpPromise ??= import('sharp').then(({ default: sharp }) => {
+    sharp.cache(false);
+    sharp.concurrency(2);
+    return sharp;
+  }).catch((err) => { sharpPromise = undefined; throw err; });
+  return sharpPromise;
+}
 
 /** Decodifica, corrige orientación EXIF y redimensiona a máx 600px, WebP q80. Lanza IMAGEN_INVALIDA. */
 export async function procesarImagen(buffer) {
+  const sharp = await cargarSharp(); // fuera del try: un fallo al cargar sharp es 500, no IMAGEN_INVALIDA
   try {
     return await sharp(buffer, { failOn: 'error', limitInputPixels: 40_000_000 })
       .rotate()
@@ -39,8 +48,8 @@ async function reemplazarFoto(empleadoId, fotoPathAnterior, webp, log) {
 export async function subirUna(empleadoId, file, log) {
   if (!file) throw new AppError(400, 'VALIDACION', 'Falta el archivo', [{ campo: 'foto', motivo: 'Requerido' }]);
   if (!esImagenAceptada(file)) throw new AppError(415, 'TIPO_NO_SOPORTADO', 'La foto debe ser JPG, PNG o WebP');
-  const fila = await obtenerFila(empleadoId);
-  const webp = await procesarImagen(file.buffer);
+  // La lectura en DB corre mientras sharp procesa la imagen (CPU).
+  const [fila, webp] = await Promise.all([obtenerFila(empleadoId), procesarImagen(file.buffer)]);
   await reemplazarFoto(empleadoId, fila.foto_path, webp, log);
   return obtener(empleadoId);
 }
@@ -66,10 +75,10 @@ export async function subirBulk(files, log) {
   }
 
   const porDoc = new Map();
-  for (const lote of enLotes([...new Set(pendientes.map((p) => p.documento))], 500)) {
-    const filas = check(await getSupabase().from('empleados').select('id, documento, foto_path').in('documento', lote));
-    for (const r of filas) porDoc.set(r.documento, r);
-  }
+  const lotes = enLotes([...new Set(pendientes.map((p) => p.documento))], 500);
+  const resultados = await Promise.all(lotes.map((lote) =>
+    getSupabase().from('empleados').select('id, documento, foto_path').in('documento', lote)));
+  for (const r of resultados.flatMap((res) => check(res))) porDoc.set(r.documento, r);
 
   let subidas = 0;
   const cola = [...pendientes];
