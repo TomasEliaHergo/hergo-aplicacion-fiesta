@@ -463,6 +463,11 @@
 .kpi-ok .kpi-value {
   color: var(--ok);
 }
+.kpi-note {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--danger, #b42318);
+}
 .kpi-skel-value {
   margin-top: var(--sp-2);
 }

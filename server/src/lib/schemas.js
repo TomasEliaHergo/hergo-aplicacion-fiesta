@@ -40,3 +40,9 @@ export const usernameSchema = z
 export const passwordSchema = z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200);
 
 export const rolSchema = z.enum(['rrhh', 'scanner'], { message: 'Rol inválido (rrhh o scanner)' });
+
+/** Motivo opcional del rechazo en la puerta: ausente / '' / null / solo espacios => null; máx. 200. */
+export const motivoRechazoSchema = z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? undefined : v),
+  textoSchema(200).optional(),
+).transform((v) => v || null);

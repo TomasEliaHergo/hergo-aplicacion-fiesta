@@ -3,9 +3,9 @@
 //   from(t).select(cols, {count, head}) / insert / update / upsert({onConflict}) / delete
 //   filtros eq, neq, gt, gte, lt, lte, like, ilike, is, in, not, or (gramática PostgREST)
 //   order(col, {ascending, nullsFirst}), range, limit, single, maybeSingle, abortSignal
-//   rpc(nombre, args) ; storage.from(bucket).upload / remove / getPublicUrl
+//   rpc(nombre, args) ; storage.from(bucket).upload / remove / list / getPublicUrl
 // Devuelve { data, error, count } con errores con forma PostgREST { code, message, details, hint }.
-import { mkdir, writeFile, unlink, access } from 'node:fs/promises';
+import { mkdir, writeFile, unlink, access, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { getLocalDb, FOTOS_DIR } from './local-db.js';
 import { getConfig } from '../config.js';
@@ -388,6 +388,33 @@ function storageBucket(bucket) {
           }
         }
         return { data: borrados, error: null };
+      } catch (err) {
+        return { data: null, error: { statusCode: '500', error: 'Error', message: err.message } };
+      }
+    },
+    /**
+     * Como supabase-js: lista UN nivel de la "carpeta" prefijo, ordenado por nombre.
+     * Carpetas => { name, id: null, metadata: null }; archivos => id y metadata.size.
+     */
+    async list(prefijo = '', { limit = 100, offset = 0 } = {}) {
+      try {
+        const base = bucket === 'fotos' ? FOTOS_DIR : path.join(path.dirname(FOTOS_DIR), bucket);
+        const dir = prefijo ? rutaSegura(bucket, prefijo) : base;
+        let entradas;
+        try {
+          entradas = await readdir(dir, { withFileTypes: true });
+        } catch (err) {
+          if (err.code === 'ENOENT') return { data: [], error: null };
+          throw err;
+        }
+        entradas.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        const pagina = entradas.slice(offset, offset + limit);
+        const data = await Promise.all(pagina.map(async (e) => {
+          if (e.isDirectory()) return { name: e.name, id: null, metadata: null };
+          const st = await stat(path.join(dir, e.name));
+          return { name: e.name, id: `${prefijo ? `${prefijo}/` : ''}${e.name}`, metadata: { size: st.size } };
+        }));
+        return { data, error: null };
       } catch (err) {
         return { data: null, error: { statusCode: '500', error: 'Error', message: err.message } };
       }

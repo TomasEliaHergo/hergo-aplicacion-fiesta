@@ -85,16 +85,24 @@ Ambos responden `Cache-Control: no-store`. `escaneado_at` = hora del (primer) in
 El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descargar imagen".
 
 ### Scanner
+
+Flujo de la puerta en dos pasos: **verificar** (solo lectura, se muestra la foto) → el personal compara con la persona → **confirmar** (registra) o **rechazar** (auditoría, no registra). La pantalla de bienvenida del invitado cambia solo después de *confirmar*.
+
 | Método | Path | Auth | Body | Respuesta |
 |---|---|---|---|---|
-| POST | `/api/scan` | scanner, rrhh | `{token}` | `200` siempre que el request sea válido (ver abajo) · `400 VALIDACION` |
+| POST | `/api/scan/verificar` | scanner, rrhh | `{token}` | `200 {estado: "PENDIENTE"\|"YA_INGRESO"\|"INVALIDO", empleado: {id, nombre, documento, empresa, sector, foto_url}\|null, escaneado_at, escaneado_por_nombre}` · `400 VALIDACION`. **No registra nada.** 1 RPC (`verificar_qr`); formato de token inválido → `INVALIDO` sin ir a la DB. |
+| POST | `/api/scan/confirmar` | scanner, rrhh | `{token}` | `200` con la forma de `/api/scan` (abajo): `OK`, `YA_INGRESO` (otro lo confirmó en el medio) o `INVALIDO`. RPC `registrar_asistencia` (atómica). |
+| POST | `/api/scan/rechazar` | scanner, rrhh | `{token, motivo?}` (motivo ≤ 200, opcional) | `204` · `404 NO_ENCONTRADO` (token inexistente) · `400 VALIDACION`. Inserta en `appfiesta.rechazos` (RPC `registrar_rechazo`); **no** registra el ingreso. |
+| POST | `/api/scan` | scanner, rrhh | `{token}` | Compatibilidad (registra directo, el cliente ya no lo usa). `200` siempre que el request sea válido · `400 VALIDACION` |
 
 ```json
 { "estado": "OK | YA_INGRESO | INVALIDO",
-  "empleado": { "nombre": "Ana Pérez", "documento": "30123456", "empresa": "Hergo", "sector": "Ventas", "foto_url": "..." },
+  "empleado": { "id": "uuid", "nombre": "Ana Pérez", "documento": "30123456", "empresa": "Hergo", "sector": "Ventas", "foto_url": "..." },
   "escaneado_at": "2026-12-19T23:41:00Z" }
 ```
-`INVALIDO` → `empleado: null, escaneado_at: null`. `YA_INGRESO` devuelve la hora del **primer** ingreso. Se responde 200 en los tres casos para que la UI muestre pantalla verde/amarilla/roja sin manejar errores.
+`INVALIDO` → `empleado: null, escaneado_at: null`. `YA_INGRESO` devuelve la hora del **primer** ingreso. Se responde 200 en los estados de negocio para que la UI muestre la pantalla correspondiente sin manejar errores.
+
+Escáner (UI): `PENDIENTE` = pantalla azul con lunares "VERIFICÁ LA IDENTIDAD" + botones **Confirmar ingreso** / **No es la persona** (motivo opcional: *No coincide la foto*, *Sin DNI*, *Otro*). Confirmado → verde "PUEDE PASAR" (único estado con sonido de éxito; vuelve a escanear solo a los 4 s). Rechazado → rojo "INGRESO RECHAZADO" (requiere un toque). Error de red al confirmar/rechazar → "NO REGISTRADO" con **Reintentar** (conserva el token, no hay que re-escanear). Botones deshabilitados mientras hay un envío en curso (sin doble toque).
 
 ### Empleados (RRHH)
 | Método | Path | Body / query | Respuesta / errores |
@@ -129,8 +137,10 @@ El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descarga
 { "total": 820, "presentes": 512, "ausentes": 308, "porcentaje": 62.4,
   "porEmpresa": [ { "empresa": "Hergo", "total": 500, "presentes": 320,
                     "sectores": [ { "sector": "Ventas", "total": 80, "presentes": 61 } ] } ],
+  "rechazos": 3,
   "actualizadoAt": "2026-12-19T23:50:00Z" }
 ```
+`rechazos` = total de "No es la persona" marcados en la puerta (`null` si la tabla no existe todavía: migración 002 sin correr; el resto del resumen funciona igual). Se cuenta en paralelo con el rollup.
 El panel RRHH hace polling cada 15s (suficiente; sin WebSocket).
 
 ### Usuarios (RRHH)
@@ -236,6 +246,8 @@ Un solo proyecto de Vercel desde la raíz del repo:
 |---|---|---|
 | `db/migraciones/001_estado_por_token.sql` | Función `appfiesta.estado_por_token(p_token text) returns table (nombre, escaneado_at)` para `GET /api/public/estado/:token` | **Supabase** (base ya creada): pegar el archivo completo en el SQL Editor y ejecutar (termina con `notify pgrst, 'reload schema'`). Mientras no se corra, el endpoint funciona igual pero con 2 consultas en serie y un warning en el log. **Local**: automático. |
 
+| `db/migraciones/002_confirmacion_ingreso.sql` | Tabla `appfiesta.rechazos(id, empleado_id → empleados on delete cascade, rechazado_por → usuarios, motivo ≤ 200, created_at)` con RLS; funciones `verificar_qr(p_token)` y `registrar_rechazo(p_token, p_usuario, p_motivo)` | **Supabase**: pegar el archivo completo en el SQL Editor y ejecutar. **Obligatoria** para el escáner nuevo: sin ella `/api/scan/verificar` y `/rechazar` responden 500 (`/api/scan` y `/confirmar` siguen andando; `resumen.rechazos` = `null`). **Local**: automático. |
+
 El modo local aplica todos los `db/migraciones/*.sql` (orden alfabético) en **cada** arranque, después de crear el esquema si hacía falta; por eso deben ser idempotentes.
 
 ## Rendimiento (Vercel + Supabase)
@@ -253,6 +265,7 @@ Cada round trip a Supabase cuesta ~120-200 ms desde Argentina (más si la funci�
 | `POST /api/public/qr` | 1 | 1 (2 consultas en paralelo) |
 | `GET /api/public/estado/:token` | - | 1 (0 si el formato es inválido) |
 | `POST /api/scan` | 1 auth + 1 RPC | 0-1 auth + 1 RPC |
+| `POST /api/scan/verificar` · `/confirmar` · `/rechazar` | - | 0-1 auth + 1 RPC cada uno |
 | `GET /api/empleados` (con `total`) | 1 auth + 1 | 0-1 auth + 1 |
 | `GET /api/empleados/filtros` | 1 auth + 1 | 0-1 auth + 1 (+ cache del navegador 10 s) |
 | `GET /api/asistencias/resumen` | 1 auth + 1 | 0-1 auth + 1 |

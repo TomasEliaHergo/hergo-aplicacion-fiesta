@@ -7,6 +7,7 @@
   --ok-bg: #067647;
   --warn-bg: #fdb022;
   --bad-bg: #b42318;
+  --verify-bg: #1849a9;
   position: fixed;
   inset: 0;
   display: flex;
@@ -69,6 +70,15 @@
 .scanner-count-total {
   font-weight: 500;
   color: var(--ink-3);
+}
+.scanner-count-rech {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgb(242 193 78 / 0.35);
+  color: #fda29b;
 }
 @media (max-width: 380px) {
   .scanner-count-label {
@@ -314,6 +324,13 @@
   background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.16) 0 14px, transparent 14px 28px);
   color: #fff;
 }
+/* Verificar identidad: azul con lunares (textura distinta de rayas / liso) */
+.res-verify {
+  background-color: var(--verify-bg);
+  background-image: radial-gradient(rgb(255 255 255 / 0.1) 2px, transparent 2.6px);
+  background-size: 18px 18px;
+  color: #fff;
+}
 .res-error {
   background-color: #344054;
   background-image: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.07) 0 14px, transparent 14px 28px);
@@ -350,6 +367,17 @@
   font-weight: 700;
   line-height: 1.25;
   margin: 6px 0 0;
+}
+.scan-result-nota {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 4px 0 0;
+  opacity: 0.92;
+}
+/* El título recibe foco programático (lectores de pantalla); sin anillo visual. */
+.scan-result-title:focus {
+  outline: none;
 }
 .scan-result-body {
   flex: 1;
@@ -479,6 +507,133 @@
   outline-color: #000;
   box-shadow: 0 0 0 7px #fff;
 }
+/* Dos botones apilados (error reintentable): Reintentar + Escanear siguiente */
+.scan-next-bar-doble {
+  flex-direction: column;
+  gap: 10px;
+}
+.btn-scan-next-sec {
+  min-height: 56px;
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: none;
+}
+.btn-scan-next-sec:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.1);
+}
+
+/* ---------- Decisión: confirmar / no es la persona (zona del pulgar) ---------- */
+.scan-decision-bar {
+  flex-direction: column;
+  gap: 10px;
+}
+.scan-decision {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+@media (max-width: 359px) {
+  .scan-decision {
+    grid-template-columns: 1fr;
+  }
+}
+.scan-decision .btn {
+  min-height: 64px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.28);
+}
+.scan-btn-confirmar {
+  --btn-bg: #067647;
+  --btn-fg: #fff;
+  --btn-border: #fff;
+  background: #067647;
+  color: #fff;
+  border: 3px solid #fff !important;
+}
+.scan-btn-confirmar:hover:not(:disabled) {
+  --btn-bg: #05603a;
+  background: #05603a;
+}
+.scan-btn-rechazar {
+  --btn-bg: #fff;
+  --btn-fg: #b42318;
+  --btn-border: #b42318;
+  background: #fff;
+  color: #b42318;
+  border: 3px solid #b42318 !important;
+}
+.scan-btn-rechazar:hover:not(:disabled) {
+  --btn-bg: #fef3f2;
+  background: #fef3f2;
+}
+.scan-btn-volver {
+  --btn-bg: transparent;
+  --btn-fg: #fff;
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgb(255 255 255 / 0.85) !important;
+  box-shadow: none !important;
+}
+.scan-btn-volver:hover:not(:disabled) {
+  --btn-bg: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.1);
+}
+.scan-decision .btn:disabled {
+  opacity: 0.7;
+}
+.scan-decision .btn:focus-visible,
+.scan-motivo:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 7px #000;
+}
+.scan-btn-spinner {
+  width: 22px;
+  height: 22px;
+  border-width: 3px;
+}
+.scan-motivo-titulo {
+  margin: 0;
+  width: 100%;
+  font-size: var(--fs-16);
+  font-weight: 800;
+}
+.scan-motivo-titulo span {
+  font-weight: 500;
+  opacity: 0.85;
+}
+.scan-motivos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.scan-motivo {
+  --btn-bg: rgb(255 255 255 / 0.14);
+  --btn-fg: #fff;
+  flex: 1 1 auto;
+  min-height: 52px;
+  padding: 6px 16px;
+  border-radius: var(--r-full);
+  background: rgb(255 255 255 / 0.14);
+  color: #fff;
+  border: 2px solid rgb(255 255 255 / 0.85) !important;
+  font-size: var(--fs-16);
+  font-weight: 700;
+}
+.scan-motivo:hover:not(:disabled) {
+  --btn-bg: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.24);
+}
+
 .scan-countdown {
   position: absolute;
   left: 0;
@@ -545,6 +700,12 @@
   }
   .btn-scan-next {
     min-height: 54px;
+  }
+  .scan-decision .btn {
+    min-height: 58px;
+  }
+  .scan-motivo {
+    min-height: 48px;
   }
 }
 

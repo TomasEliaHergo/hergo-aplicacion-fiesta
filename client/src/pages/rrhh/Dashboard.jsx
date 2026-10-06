@@ -87,7 +87,13 @@ function Kpis({ resumen }) {
     <section className="kpis" aria-label="Resumen de asistencia">
       <Kpi icon={Users} label="Invitados" value={formatNumero(total)} tone="neutral" />
       <Kpi icon={UserCheck} label="Presentes" value={formatNumero(presentes)} tone="ok" />
-      <Kpi icon={UserX} label="Ausentes" value={formatNumero(ausentes)} tone="muted" />
+      <Kpi icon={UserX} label="Ausentes" value={formatNumero(ausentes)} tone="muted">
+        {resumen.rechazos > 0 && (
+          <span className="kpi-note" title='Veces que en la puerta se marcó "No es la persona"'>
+            {formatNumero(resumen.rechazos)} {resumen.rechazos === 1 ? 'rechazo' : 'rechazos'} en la puerta
+          </span>
+        )}
+      </Kpi>
       <Kpi icon={Percent} label="Asistencia" value={formatPorcentaje(pct)} tone="accent">
         <Barra valor={presentes} total={total} label="Porcentaje de asistencia" />
       </Kpi>

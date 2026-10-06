@@ -42,13 +42,18 @@ Las tablas se crean en el schema `appfiesta`, igual que en Supabase. Si `server/
 
 PGlite admite un solo proceso: no correr `seed:admin` (ni un segundo server) contra la base local mientras el server está levantado.
 
+### Actualizar una base de Supabase ya creada
+
+Si `schema.sql` se corrió con una versión anterior, ejecutar en el *SQL Editor*, en orden, los archivos de `server/db/migraciones/` que falten (son idempotentes):
+`001_estado_por_token.sql` y **`002_confirmacion_ingreso.sql`** (obligatoria para el escáner con confirmación: tabla `rechazos` y funciones `verificar_qr` / `registrar_rechazo`). El modo local las aplica solo al arrancar.
+
 ## Pantallas
 
 | Ruta | Quién | Qué hace |
 |---|---|---|
 | `/` | Invitado (link público) | Ingresa DNI → ve y descarga su QR, o aviso de que no está en la lista |
 | `/login` | RRHH / Escáner | Ingreso con usuario y contraseña |
-| `/scanner` | Escáner (y RRHH) | Cámara: **INGRESO OK** / **YA INGRESÓ a las HH:MM** / **QR NO VÁLIDO** con foto y datos |
+| `/scanner` | Escáner (y RRHH) | Cámara → foto y datos → **VERIFICÁ LA IDENTIDAD**: *Confirmar ingreso* (**PUEDE PASAR**) o *No es la persona* (**INGRESO RECHAZADO**, queda auditado). También **QR YA USADO** (hora y quién) / **NO PASA** |
 | `/admin` | RRHH | Asistencia en vivo + export Excel, empleados, importar Excel, fotos masivas, usuarios |
 
 ## Importación de Excel
@@ -67,6 +72,22 @@ Desde *Fotos masivas* se suben muchas imágenes juntas. Cada archivo se vincula 
 Formatos: JPG, PNG o WebP (HEIC de iPhone **no**: convertir a JPG). Si dos empleados se llaman igual, la foto queda como *nombre repetido* y hay que nombrarla con el documento.
 Al terminar se ve qué archivo se asignó a quién, cuáles no se vincularon (y por qué) y el listado **Quedaron sin foto** (también visible antes de subir), descargable como CSV para Excel. También se puede subir de a una desde *Empleados*.
 Máximo **4 MB por foto** y 4 MB para el Excel de importación (Vercel no acepta requests de más de 4.5 MB); la carga masiva se envía en lotes chicos automáticamente.
+
+## Después de las pruebas (borrar datos de prueba)
+
+Antes del evento real, para dejar la base vacía (empleados, asistencias, rechazos, **usuarios** y fotos) sin tocar la estructura:
+
+```bash
+npm run reset:datos --prefix server                       # usa DB_MODE de server/.env (Supabase o local)
+npm run reset:datos --prefix server -- --local            # fuerza la base local (PGlite)
+npm run reset:datos --prefix server -- --si-estoy-seguro  # sin pregunta (no interactivo)
+npm run seed:admin --prefix server -- admin "Admin RRHH"  # después: volver a crear el usuario RRHH
+```
+
+El script muestra el **proyecto de Supabase** (ref de la URL) y cuántos registros/fotos va a borrar, y pide escribir exactamente `BORRAR TODO`. Borra todas las fotos del bucket `fotos` con la Storage API (el bucket queda) y luego las filas de `rechazos`, `asistencias`, `empleados` y `usuarios`.
+En modo local el server tiene que estar **frenado** (PGlite admite un solo proceso; el script se niega si responde el puerto del server). En local, al volver a arrancar el server se recrean `rrhh`/`scanner` con passwords nuevas en `CREDENCIALES-LOCAL.txt`; para borrar todo, incluida la base, también sirve `npm run reset:local --prefix server`.
+
+Alternativa solo SQL: `server/db/reset-datos.sql` (`TRUNCATE ... CASCADE` de las tablas de `appfiesta`) en el *SQL Editor*. **No borra las fotos** (Supabase no permite borrar `storage.objects` por SQL): borrarlas desde *Storage → fotos* o con el script.
 
 ## Producción en Vercel
 
