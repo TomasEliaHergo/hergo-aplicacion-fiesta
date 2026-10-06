@@ -1328,3 +1328,47 @@
     display: none;
   }
 }
+
+/* Fotos masivas: resultado y "sin foto" */
+.fotos-alert {
+  margin-top: var(--sp-4);
+}
+.result-subtitle {
+  margin: var(--sp-5) 0 var(--sp-1);
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.result-subtitle + .muted {
+  margin-bottom: var(--sp-3);
+}
+.result-details {
+  margin-top: var(--sp-5);
+}
+.result-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--fs-14);
+  padding: var(--sp-2) 0;
+  margin-bottom: var(--sp-2);
+}
+.result-details > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.stat-chip-warn {
+  border-color: var(--warn-border);
+  background: var(--warn-soft);
+}
+.stat-chip-warn svg,
+.stat-chip-warn .stat-chip-value {
+  color: var(--warn);
+}
+.table .col-opt {
+  display: none;
+}
+@media (min-width: 600px) {
+  .table .col-opt {
+    display: table-cell;
+  }
+}

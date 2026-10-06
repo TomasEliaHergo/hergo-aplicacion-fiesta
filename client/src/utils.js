@@ -92,6 +92,11 @@ export const MOTIVOS = {
   TIPO_NO_SOPORTADO: 'Formato no soportado (usar JPG, PNG o WebP)',
   ARCHIVO_MUY_GRANDE: 'Supera los 4 MB',
   IMAGEN_INVALIDA: 'La imagen está dañada o no se pudo leer',
+  SIN_COINCIDENCIA: 'Sin coincidencia con ningún empleado',
+  AMBIGUO: 'Nombre repetido en varios empleados',
+  DUPLICADO_EN_LOTE: 'Archivo repetido para la misma persona',
+  ERROR_AL_GUARDAR: 'No se pudo guardar (reintentá)',
+  FORMATO_HEIC: 'Formato HEIC (iPhone) no aceptado: convertila a JPG',
 };
 
 /** Traduce un motivo del backend. Conserva el sufijo (ej: "(también en fila 7)"). */

@@ -16,6 +16,7 @@ const listaQuery = z.object({
   empresa: queryOpcional(z.string().max(120)),
   sector: queryOpcional(z.string().max(120)),
   asistio: queryOpcional(booleanQuery),
+  foto: queryOpcional(z.enum(['con', 'sin'])),
   orden: queryOpcional(z.enum(['nombre', 'escaneado_at'])).transform((v) => v ?? 'nombre'),
   ...paginacion,
 });

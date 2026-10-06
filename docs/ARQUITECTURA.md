@@ -99,7 +99,7 @@ El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descarga
 ### Empleados (RRHH)
 | Método | Path | Body / query | Respuesta / errores |
 |---|---|---|---|
-| GET | `/api/empleados` | `?q=&empresa=&sector=&asistio=true\|false&page=&pageSize=&orden=nombre\|escaneado_at` | `200 {items: Empleado[], total, page, pageSize}`. `q` busca en nombre (ilike, trigram) o documento (prefijo). |
+| GET | `/api/empleados` | `?q=&empresa=&sector=&asistio=true\|false&foto=con\|sin&page=&pageSize=&orden=nombre\|escaneado_at` | `200 {items: Empleado[], total, page, pageSize}`. `q` busca en nombre (ilike, trigram) o documento (prefijo). `foto=sin` → `foto_path is null`, `foto=con` → `not foto_path is null` (lo usa *Fotos masivas* para "Quedaron sin foto", paginando de a 200). |
 | GET | `/api/empleados/filtros` | - | `200 {empresas: string[], sectores: string[]}` (para combos). `Cache-Control: private, max-age=10`. |
 | GET | `/api/empleados/:id` | - | `200 Empleado` · `404` |
 | POST | `/api/empleados` | `{documento, nombre, empresa?, sector?}` | `201 Empleado` · `409 DUPLICADO` (documento) |
@@ -108,7 +108,7 @@ El cliente genera el QR (lib `qrcode`) a partir de `qr_token` y ofrece "Descarga
 | GET | `/api/empleados/:id/qr` | - | `200 {qr_token}` (RRHH puede reimprimir un QR) |
 | POST | `/api/empleados/:id/foto` | multipart `foto` (jpg/png/webp, máx 4 MB) | `200 Empleado` · `404` · `413` · `415` |
 | DELETE | `/api/empleados/:id/foto` | - | `204` |
-| POST | `/api/empleados/fotos` | multipart `fotos[]` (máx 300 archivos/request, 4 MB c/u; el cliente manda lotes de ≤ 3.5 MB acumulados y ≤ 20 archivos). Nombre de archivo = documento (`30.123.456.jpg` se normaliza) | `200 {subidas, errores:[{archivo, motivo}]}` motivos: `DOCUMENTO_NO_EXISTE`, `TIPO_NO_SOPORTADO`, `ARCHIVO_MUY_GRANDE`, `IMAGEN_INVALIDA` |
+| POST | `/api/empleados/fotos` | multipart `fotos[]` (máx 300 archivos/request, 4 MB c/u; el cliente manda lotes de ≤ 3.5 MB acumulados y ≤ 20 archivos). Nombre de archivo = documento (`30.123.456.jpg`) **o** apellido y nombre como en `empleados.nombre` (`ABIUS JOAQUIN.jpg`); ver "Vinculación de fotos por nombre de archivo" | `200 {subidas, asignadas:[{archivo, documento, nombre, via:'documento'\|'nombre'}], errores:[{archivo, motivo}]}` motivos: `DOCUMENTO_NO_EXISTE`, `SIN_COINCIDENCIA`, `AMBIGUO (documentos a, b)`, `DUPLICADO_EN_LOTE`, `TIPO_NO_SOPORTADO`, `ARCHIVO_MUY_GRANDE`, `IMAGEN_INVALIDA`, `ERROR_AL_GUARDAR` |
 | POST | `/api/empleados/import` | multipart `archivo` (.xlsx/.xls/.csv, máx 4 MB) | `200 {insertados, actualizados, sinCambios, errores:[{fila, motivo}]}` · `400 COLUMNAS_FALTANTES {detalles:[...]}` · `415` |
 
 **Import (detalle)** - lib `xlsx` (SheetJS) para los tres formatos; primera hoja.
@@ -198,8 +198,9 @@ Aclaraciones y desvíos menores respecto del contrato, tal como quedaron impleme
 |---|---|
 | Puerto | El server escucha en `PORT` (default **4000**, no 3000). El proxy de Vite debe apuntar a `http://localhost:4000`. |
 | `expiraEn` (login) | String ISO-8601 UTC con el instante de expiración del JWT (ej. `"2026-12-20T09:41:00.000Z"`). |
-| Fotos bulk | Se acepta el campo multipart `fotos` **o** `fotos[]` (ambos). Un archivo > 4 MB no aborta el request: se reporta como `ARCHIVO_MUY_GRANDE` en `errores`. Motivo extra posible: `ERROR_AL_GUARDAR` (falla de Storage/DB). Si el nombre de archivo no contiene un documento válido → `DOCUMENTO_NO_EXISTE`. |
+| Fotos bulk | Se acepta el campo multipart `fotos` **o** `fotos[]` (ambos). Un archivo > 4 MB no aborta el request: se reporta como `ARCHIVO_MUY_GRANDE` en `errores`. Motivo extra posible: `ERROR_AL_GUARDAR` (falla de Storage/DB). Si el nombre de archivo es un documento (5-12 dígitos) que no existe → `DOCUMENTO_NO_EXISTE`; si es un nombre sin coincidencia → `SIN_COINCIDENCIA`. |
 | Foto individual | Imagen corrupta / no decodificable → `400 IMAGEN_INVALIDA`. Resize: rotación EXIF + encaja en 600x600 **sin recortar** (`fit: inside`, sin agrandar), WebP q80. |
+| Fotos bulk: vinculación por nombre de archivo | Lógica pura en `server/src/lib/foto-match.js` (tests en `server/test/foto-match.test.js`). 1) Se quita la extensión y las marcas de copia (` (1)`, ` - copia`, ` copy`, `Copia de `). Si lo que queda, sin `. - _` ni espacios, son 5-12 dígitos → match por **documento** (DNI o CUIT). 2) Si no, se normaliza (minúsculas, sin acentos, `ñ→n`, `_ - . ,` → espacio, espacios colapsados) y se compara con `empleados.nombre` normalizado: **a)** igualdad exacta; **b)** si no, mismas palabras en cualquier orden (`joaquin abius` = `abius joaquin`). **Sin coincidencia aproximada** (nada de Levenshtein): un typo o una palabra de más/menos es `SIN_COINCIDENCIA`. Más de un empleado en (a) o (b) → `AMBIGUO (documentos …)` y no se sube. Dos archivos del mismo request que caen en el mismo empleado → el segundo es `DUPLICADO_EN_LOTE`. El índice (Maps por documento, nombre y bolsa de palabras) se arma una vez por request con todos los empleados (`id, documento, nombre, foto_path`, paginado de a 1000). Entre lotes distintos del cliente el servidor no ve repetidos: el cliente lo detecta en `asignadas` y reporta la foto pisada como `DUPLICADO_EN_LOTE (quedó …)`. |
 | Import: `COLUMNAS_FALTANTES` | `detalles: [{campo:"documento", motivo:"Falta la columna \"documento\""}]` (misma forma que `VALIDACION`). |
 | Import: archivo ilegible | `415 TIPO_NO_SOPORTADO`. Extensión distinta de .xlsx/.xls/.csv → `415`. CSV se lee como UTF-8 (BOM opcional) sin conversión de tipos. |
 | Import: columnas opcionales | Si el archivo **no trae** la columna `empresa` o `sector`, esa columna no se compara ni se modifica en empleados existentes (altas nuevas quedan con `''`). Si la columna existe y la celda está vacía, se guarda `''`. |

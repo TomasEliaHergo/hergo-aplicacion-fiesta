@@ -1,9 +1,11 @@
+import { mapearEncabezados } from './import-core.js';
+
 // SheetJS se carga recién al usarlo (import / export): no pesa en el cold start del resto de la API.
 let xlsxPromise;
 const cargarXlsx = () => (xlsxPromise ??= import('xlsx').catch((err) => { xlsxPromise = undefined; throw err; }));
 
 /**
- * Lee la primera hoja de un .xlsx/.xls/.csv como matriz de celdas.
+ * Lee la hoja de empleados de un .xlsx/.xls/.csv como matriz de celdas.
  * Devuelve { filas, primeraFila } donde primeraFila es el número de fila Excel de filas[0].
  */
 export async function leerPrimeraHoja(buffer, extension) {
@@ -17,14 +19,20 @@ export async function leerPrimeraHoja(buffer, extension) {
   } else {
     wb = XLSX.read(buffer, { type: 'buffer', cellDates: false, dense: true });
   }
-  const nombreHoja = wb.SheetNames[0];
-  if (!nombreHoja) return { filas: [], primeraFila: 1 };
-  const hoja = wb.Sheets[nombreHoja];
-  const ref = hoja['!ref'];
-  if (!ref) return { filas: [], primeraFila: 1 };
-  const rango = XLSX.utils.decode_range(ref);
-  const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, raw: true, defval: '', blankrows: true });
-  return { filas, primeraFila: rango.s.r + 1 };
+  // Usa la primera hoja que tenga las columnas obligatorias (nombre + documento); si ninguna
+  // las tiene, la primera hoja (el import reporta COLUMNAS_FALTANTES).
+  let elegida = null;
+  for (const nombreHoja of wb.SheetNames) {
+    const hoja = wb.Sheets[nombreHoja];
+    const ref = hoja?.['!ref'];
+    if (!ref) continue;
+    const rango = XLSX.utils.decode_range(ref);
+    const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, raw: true, defval: '', blankrows: true });
+    const lectura = { filas, primeraFila: rango.s.r + 1, hoja: nombreHoja };
+    elegida ??= lectura;
+    if (mapearEncabezados(filas[0]).faltantes.length === 0) return lectura;
+  }
+  return elegida ?? { filas: [], primeraFila: 1 };
 }
 
 /**

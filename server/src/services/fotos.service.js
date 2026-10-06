@@ -1,8 +1,7 @@
-import { getSupabase } from '../lib/supabase.js';
+import { getSupabase, traerTodo } from '../lib/supabase.js';
 import { AppError, check } from '../lib/errors.js';
 import { nuevoFotoPath, subirFoto, borrarFotos } from '../lib/storage.js';
-import { documentoDesdeNombreArchivo, documentoValido } from '../lib/documento.js';
-import { enLotes } from '../lib/import-core.js';
+import { crearIndice, resolverLote } from '../lib/foto-match.js';
 import { esImagenAceptada } from '../middleware/upload.js';
 import { obtenerFila, obtener } from './empleados.service.js';
 
@@ -61,31 +60,42 @@ export async function borrarFotoEmpleado(empleadoId, log) {
   await borrarFotos([fila.foto_path], log);
 }
 
-/** Bulk: nombre de archivo = documento. Devuelve { subidas, errores:[{archivo, motivo}] }. */
+/** Todos los empleados (id, documento, nombre, foto_path), paginando de a 1000 (max-rows de PostgREST). */
+async function traerIndiceEmpleados() {
+  const filas = await traerTodo((d, h) =>
+    getSupabase().from('empleados').select('id, documento, nombre, foto_path').order('id').range(d, h));
+  return crearIndice(filas);
+}
+
+/**
+ * Bulk: el nombre de archivo es el documento ("30123456.jpg") o el apellido y nombre
+ * tal como figura en empleados.nombre ("ABIUS JOAQUIN.jpg"); ver lib/foto-match.js.
+ * Devuelve { subidas, asignadas:[{archivo, documento, nombre, via}], errores:[{archivo, motivo}] }.
+ */
 export async function subirBulk(files, log) {
   const errores = [];
-  const pendientes = [];
+  const candidatos = [];
   for (const f of files) {
     const archivo = f.originalname;
     if (f.muyGrande) { errores.push({ archivo, motivo: 'ARCHIVO_MUY_GRANDE' }); continue; }
     if (!esImagenAceptada(f)) { errores.push({ archivo, motivo: 'TIPO_NO_SOPORTADO' }); continue; }
-    const documento = documentoDesdeNombreArchivo(archivo);
-    if (!documentoValido(documento)) { errores.push({ archivo, motivo: 'DOCUMENTO_NO_EXISTE' }); continue; }
-    pendientes.push({ archivo, documento, file: f });
+    candidatos.push(f);
+  }
+  if (candidatos.length === 0) return { subidas: 0, asignadas: [], errores };
+
+  // Un solo índice por request (unos miles de filas: barato) y resolución en orden.
+  const indice = await traerIndiceEmpleados();
+  const lote = resolverLote(candidatos.map((f) => f.originalname), indice);
+  for (const e of lote.errores) {
+    errores.push({ archivo: e.archivo, motivo: e.motivo });
+    candidatos[e.indice].buffer = null;
   }
 
-  const porDoc = new Map();
-  const lotes = enLotes([...new Set(pendientes.map((p) => p.documento))], 500);
-  const resultados = await Promise.all(lotes.map((lote) =>
-    getSupabase().from('empleados').select('id, documento, foto_path').in('documento', lote)));
-  for (const r of resultados.flatMap((res) => check(res))) porDoc.set(r.documento, r);
-
-  let subidas = 0;
-  const cola = [...pendientes];
+  const asignadas = [];
+  const cola = lote.asignados.map((a) => ({ ...a, file: candidatos[a.indice] }));
   const trabajador = async () => {
     for (let p = cola.shift(); p; p = cola.shift()) {
-      const emp = porDoc.get(p.documento);
-      if (!emp) { errores.push({ archivo: p.archivo, motivo: 'DOCUMENTO_NO_EXISTE' }); continue; }
+      const emp = p.empleado;
       let webp;
       try {
         webp = await procesarImagen(p.file.buffer);
@@ -96,9 +106,8 @@ export async function subirBulk(files, log) {
         p.file.buffer = null; // liberar memoria
       }
       try {
-        // si el mismo documento viene dos veces, la segunda reemplaza (y borra) a la primera
         emp.foto_path = await reemplazarFoto(emp.id, emp.foto_path, webp, log);
-        subidas++;
+        asignadas.push({ archivo: p.archivo, documento: emp.documento, nombre: emp.nombre, via: p.via });
       } catch (err) {
         log?.error({ err, archivo: p.archivo }, 'Error subiendo foto bulk');
         errores.push({ archivo: p.archivo, motivo: 'ERROR_AL_GUARDAR' });
@@ -106,5 +115,5 @@ export async function subirBulk(files, log) {
     }
   };
   await Promise.all(Array.from({ length: 4 }, trabajador));
-  return { subidas, errores };
+  return { subidas: asignadas.length, asignadas, errores };
 }

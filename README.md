@@ -59,7 +59,13 @@ Ejemplo para probar: `server/scripts/ejemplo-empleados.xlsx`.
 
 ## Fotos
 
-Desde *Fotos masivas* se suben muchas imágenes juntas: el nombre del archivo debe ser el documento (`30123456.jpg`). También se puede subir de a una desde *Empleados*.
+Desde *Fotos masivas* se suben muchas imágenes juntas. Cada archivo se vincula al empleado por su nombre de archivo:
+
+- **documento**: `30123456.jpg`, `30.123.456.png` o CUIT `20-30123456-7.jpg`;
+- **apellido y nombre** exactamente como en el Excel: `ABIUS JOAQUIN.jpg`. No importan mayúsculas, acentos, guiones bajos, espacios de más, el orden de las palabras ni sufijos de copia como ` (1)`; **no** se adivinan nombres mal escritos.
+
+Formatos: JPG, PNG o WebP (HEIC de iPhone **no**: convertir a JPG). Si dos empleados se llaman igual, la foto queda como *nombre repetido* y hay que nombrarla con el documento.
+Al terminar se ve qué archivo se asignó a quién, cuáles no se vincularon (y por qué) y el listado **Quedaron sin foto** (también visible antes de subir), descargable como CSV para Excel. También se puede subir de a una desde *Empleados*.
 Máximo **4 MB por foto** y 4 MB para el Excel de importación (Vercel no acepta requests de más de 4.5 MB); la carga masiva se envía en lotes chicos automáticamente.
 
 ## Producción en Vercel

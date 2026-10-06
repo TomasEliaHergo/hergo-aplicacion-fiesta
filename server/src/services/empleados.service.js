@@ -29,7 +29,7 @@ function sanitizarBusqueda(q) {
   return q.replace(/[,()"\%*_:]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export async function listar({ q, empresa, sector, asistio, page, pageSize, orden }) {
+export async function listar({ q, empresa, sector, asistio, foto, page, pageSize, orden }) {
   let query = getSupabase().from('v_empleados').select(COLS_VISTA, { count: 'exact' });
   if (q) {
     const texto = sanitizarBusqueda(q);
@@ -43,6 +43,8 @@ export async function listar({ q, empresa, sector, asistio, page, pageSize, orde
   if (empresa !== undefined) query = query.eq('empresa', empresa);
   if (sector !== undefined) query = query.eq('sector', sector);
   if (asistio !== undefined) query = query.eq('asistio', asistio);
+  if (foto === 'sin') query = query.is('foto_path', null);
+  else if (foto === 'con') query = query.not('foto_path', 'is', null);
   if (orden === 'escaneado_at') query = query.order('escaneado_at', { ascending: false, nullsFirst: false });
   query = query.order('nombre', { ascending: true }).order('id', { ascending: true });
   const desde = (page - 1) * pageSize;

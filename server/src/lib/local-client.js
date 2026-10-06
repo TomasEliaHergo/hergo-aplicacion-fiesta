@@ -1,7 +1,7 @@
 // Cliente "tipo supabase-js" para el MODO LOCAL, respaldado por PGlite.
 // Implementa SOLO la superficie que usan los services:
 //   from(t).select(cols, {count, head}) / insert / update / upsert({onConflict}) / delete
-//   filtros eq, neq, gt, gte, lt, lte, like, ilike, is, in, or (gramática PostgREST)
+//   filtros eq, neq, gt, gte, lt, lte, like, ilike, is, in, not, or (gramática PostgREST)
 //   order(col, {ascending, nullsFirst}), range, limit, single, maybeSingle, abortSignal
 //   rpc(nombre, args) ; storage.from(bucket).upload / remove / getPublicUrl
 // Devuelve { data, error, count } con errores con forma PostgREST { code, message, details, hint }.
@@ -186,6 +186,8 @@ class ConsultaLocal {
   ilike(c, v) { return this._f(c, 'ilike', v); }
   is(c, v) { return this._f(c, 'is', v); }
   in(c, v) { return this._f(c, 'in', v); }
+  /** .not(col, op, valor) como supabase-js, p. ej. .not('foto_path', 'is', null). */
+  not(c, op, v) { this.filtros.push((params) => compilarFiltro(c, op, v, params, true)); return this; }
 
   or(expr) {
     this.filtros.push((params) => `(${dividirNivelSuperior(expr).map((p) => compilarLogica(p, params)).join(' or ')})`);

@@ -64,5 +64,18 @@ export function fetchEmpleados(params) {
   };
 }
 
+/** Todos los empleados sin foto (GET /empleados?foto=sin, paginando de a 200). */
+export async function fetchSinFoto({ signal } = {}) {
+  const pageSize = 200;
+  const items = [];
+  for (let page = 1; ; page++) {
+    const data = await api.get('/empleados', { foto: 'sin', pageSize, page }, { signal });
+    const lote = data?.items || [];
+    items.push(...lote);
+    if (lote.length < pageSize || items.length >= (data?.total ?? 0)) break;
+  }
+  return items;
+}
+
 export const DASH_LIST_DEFAULT = { orden: 'nombre', page: 1, pageSize: 50 };
 export const FILTROS_DEFAULT = FILTROS_VACIOS;
