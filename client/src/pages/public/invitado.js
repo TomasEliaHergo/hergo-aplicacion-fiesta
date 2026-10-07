@@ -108,14 +108,20 @@ export function useEstadoIngreso(token, activo, { inmediato = false, onCambio, o
 
 export { esRutaInexistente };
 
-/** "PÉREZ, ANA MARÍA" -> "Ana"; "Juan Pérez" -> "Juan". */
+const capitalizar = (w) =>
+  w === w.toLocaleUpperCase('es-AR') ? w.charAt(0) + w.slice(1).toLocaleLowerCase('es-AR') : w;
+
+/**
+ * Nombre para el saludo. "PÉREZ, ANA MARÍA" → "Ana". Sin coma no se puede saber dónde termina el
+ * apellido ("ACHA CRISTIAN EZEQUIEL", "DE LA FUENTE JUAN"), así que se usa el nombre completo
+ * capitalizado: mejor "Acha Cristian Ezequiel" que saludar por el apellido.
+ */
 export function primerNombre(nombre) {
   if (!nombre) return '';
-  let s = String(nombre).trim();
-  if (s.includes(',')) s = s.split(',')[1]?.trim() || s.split(',')[0].trim();
-  const w = s.split(/\s+/)[0] || '';
-  if (w && w === w.toLocaleUpperCase('es-AR')) {
-    return w.charAt(0) + w.slice(1).toLocaleLowerCase('es-AR');
+  const s = String(nombre).trim();
+  if (s.includes(',')) {
+    const nombres = s.split(',')[1]?.trim();
+    if (nombres) return capitalizar(nombres.split(/\s+/)[0]);
   }
-  return w;
+  return s.replace(/,/g, ' ').split(/\s+/).filter(Boolean).map(capitalizar).join(' ');
 }

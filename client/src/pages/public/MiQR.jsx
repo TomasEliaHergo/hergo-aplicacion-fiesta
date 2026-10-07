@@ -3,10 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Camera,
-  CircleCheck,
   Lock,
   PartyPopper,
-  QrCode,
   RotateCcw,
   SearchX,
   Sparkles,
@@ -163,7 +161,7 @@ function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
   const nombre = primerNombre(invitado.nombre);
   return (
     <>
-      {!invitado.ingreso && <Confeti />}
+      <Confeti />
       <header className="welcome-head">
         <span className="welcome-mark" aria-hidden="true">
           <Destellos />
@@ -185,18 +183,11 @@ function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
         className="guest-qr"
       />
 
-      {invitado.ingreso ? (
-        <p className="live-status is-done" role="status">
-          <CircleCheck size={16} aria-hidden="true" />
-          Ingresaste a las {formatHora(invitado.escaneado_at)}
+      {enVivo && (
+        <p className="live-status">
+          <span className="live-dot" aria-hidden="true" />
+          Te avisamos acá cuando escaneen tu QR.
         </p>
-      ) : (
-        enVivo && (
-          <p className="live-status">
-            <span className="live-dot" aria-hidden="true" />
-            Te avisamos acá cuando escaneen tu QR.
-          </p>
-        )
       )}
 
       <ul className="tips" aria-label="Consejos">
@@ -227,7 +218,7 @@ function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
   );
 }
 
-function Celebracion({ invitado, onVerQr, titleRef }) {
+function Celebracion({ invitado, titleRef }) {
   const nombre = primerNombre(invitado.nombre);
   return (
     <section className="celebration" aria-labelledby="cel-title">
@@ -247,10 +238,6 @@ function Celebracion({ invitado, onVerQr, titleRef }) {
           </p>
         )}
         <p className="guest-lead">Que la disfrutes.</p>
-        <button type="button" className="btn btn-ghost celebration-link" onClick={onVerQr}>
-          <QrCode size={18} aria-hidden="true" />
-          Ver mi QR
-        </button>
       </div>
     </section>
   );
@@ -264,7 +251,6 @@ export default function MiQR() {
 
   const [invitado, setInvitadoState] = useState(leerInvitado);
   const [restaurado] = useState(() => invitado !== null); // abrió el link otra vez
-  const [verQr, setVerQr] = useState(false);
   const [noEncontrado, setNoEncontrado] = useState(false);
   const [enVivo, setEnVivo] = useState(true);
   const [documento, setDocumento] = useState('');
@@ -279,7 +265,7 @@ export default function MiQR() {
     guardarInvitado(inv);
   }, []);
 
-  const etapa = !invitado ? (noEncontrado ? 'noencontrado' : 'documento') : invitado.ingreso && !verQr ? 'fiesta' : 'qr';
+  const etapa = !invitado ? (noEncontrado ? 'noencontrado' : 'documento') : invitado.ingreso ? 'fiesta' : 'qr';
 
   // Foco al título de cada paso (lectores de pantalla y teclado).
   const primera = useRef(true);
@@ -297,7 +283,6 @@ export default function MiQR() {
   const volverAlInicio = useCallback(
     (mensaje) => {
       setInvitado(null);
-      setVerQr(false);
       setNoEncontrado(false);
       setError(mensaje ? { tipo: 'warning', mensaje } : null);
     },
@@ -317,7 +302,6 @@ export default function MiQR() {
       const next = { ...prev, ingreso, escaneado_at, nombre: d?.nombre || prev.nombre };
       setInvitado(next);
       if (ingreso && !prev.ingreso) {
-        setVerQr(false);
         setAnuncio(`¡Bienvenidos a la fiesta! Ingresaste a las ${formatHora(escaneado_at)}.`);
         try {
           navigator.vibrate?.([80, 60, 160]);
@@ -370,7 +354,6 @@ export default function MiQR() {
     try {
       const data = await api.post('/public/qr', { documento: digitos });
       setEnVivo(true);
-      setVerQr(false);
       setInvitado({
         qr_token: data.qr_token,
         nombre: data.nombre,
@@ -426,7 +409,7 @@ export default function MiQR() {
             }}
           />
         )}
-        {etapa === 'fiesta' && <Celebracion invitado={invitado} titleRef={titleRef} onVerQr={() => setVerQr(true)} />}
+        {etapa === 'fiesta' && <Celebracion invitado={invitado} titleRef={titleRef} />}
       </main>
       {etapa !== 'fiesta' && (
         <footer className="guest-footer">

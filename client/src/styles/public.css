@@ -476,14 +476,6 @@
 .celebration-inner .guest-lead {
   animation: rise 0.7s 0.3s var(--ease) both;
 }
-.celebration-link {
-  margin-top: var(--sp-6);
-  min-height: 48px;
-  border: 1px solid rgb(255 255 255 / 0.2) !important;
-  border-radius: var(--r-full);
-  padding: 0 var(--sp-5);
-  color: var(--text) !important;
-}
 
 /* ---------- Confeti y destellos (solo CSS) ---------- */
 
