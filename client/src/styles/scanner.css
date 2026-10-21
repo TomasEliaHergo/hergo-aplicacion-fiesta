@@ -211,10 +211,6 @@
 
 .scanner-hint,
 .scanner-overlay-msg {
-  position: absolute;
-  left: 50%;
-  bottom: max(24px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -229,9 +225,47 @@
   z-index: 2;
 }
 .scanner-overlay-msg {
+  position: absolute;
+  left: 50%;
   top: 50%;
-  bottom: auto;
   transform: translate(-50%, -50%);
+}
+
+/* Zona del pulgar: pista + "Ingresar DNI" sobre la cámara */
+.scanner-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  pointer-events: none;
+}
+.scanner-bottom > * {
+  pointer-events: auto;
+}
+.scanner-dni-btn {
+  --btn-bg: rgb(10 15 31 / 0.88);
+  --btn-fg: #fff;
+  --btn-border: var(--gold);
+  width: min(100%, 360px);
+  min-height: 56px;
+  border-width: 2px;
+  border-radius: 14px;
+  font-size: 1.125rem;
+  font-weight: 800;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}
+.scanner-dni-btn:hover:not(:disabled) {
+  --btn-bg: rgb(30 37 60 / 0.95);
+}
+.scanner-dni-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
 }
 
 .scanner-error {
@@ -251,6 +285,25 @@
 }
 .scanner-error p {
   max-width: 360px;
+}
+.scanner-error-alt {
+  margin: 0;
+  font-weight: 600;
+  color: #fff;
+}
+.scanner-error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 360px);
+}
+.scanner-error-actions .btn {
+  width: 100%;
+}
+.scanner-error-dni {
+  min-height: 60px;
+  font-size: var(--fs-20);
+  font-weight: 800;
 }
 .scanner-error-icon {
   display: grid;
@@ -375,6 +428,39 @@
   margin: 4px 0 0;
   opacity: 0.92;
 }
+/* Aviso en la tarjeta de verificación: el ingreso fue por DNI, revisar foto / documento con cuidado */
+.scan-badge-dni {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 4px 12px;
+  border: 2px solid #fde047;
+  border-radius: var(--r-full);
+  background: #101828;
+  color: #fde047;
+  font-size: var(--fs-14);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* Hoja "Ingresar DNI" (Modal claro) */
+.scan-dni-form .scan-dni-input {
+  min-height: 64px;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.scan-dni-form label {
+  font-size: var(--fs-16);
+}
+.scan-dni-msg {
+  margin: 0;
+  font-size: var(--fs-14);
+}
+
 /* El título recibe foco programático (lectores de pantalla); sin anillo visual. */
 .scan-result-title:focus {
   outline: none;
@@ -700,6 +786,9 @@
   }
   .btn-scan-next {
     min-height: 54px;
+  }
+  .scanner-dni-btn {
+    min-height: 50px;
   }
   .scan-decision .btn {
     min-height: 58px;

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { motivoRechazoSchema } from '../lib/schemas.js';
+import { motivoRechazoSchema, documentoSchema } from '../lib/schemas.js';
+import { limiteScanDocumento } from '../middleware/rateLimits.js';
 import { errores } from '../lib/errors.js';
-import { registrar, verificar, rechazar } from '../services/asistencias.service.js';
+import { registrar, verificar, rechazar, verificarPorDocumento } from '../services/asistencias.service.js';
 
 const router = Router();
 router.use(requireAuth(['scanner', 'rrhh']));
@@ -13,6 +14,7 @@ const token = z.string().trim().min(1, 'Token requerido').max(200, 'Token invál
 const scanBody = z.object({ token });
 
 const rechazoBody = z.object({ token, motivo: motivoRechazoSchema });
+const documentoBody = z.object({ documento: documentoSchema });
 
 /**
  * Flujo de la puerta: verificar (solo lectura) -> el personal compara la foto ->
@@ -22,6 +24,17 @@ const rechazoBody = z.object({ token, motivo: motivoRechazoSchema });
 router.post('/verificar', validate({ body: scanBody }), async (req, res) => {
   const resultado = await verificar(req.valid.body.token);
   req.log.info({ estado: resultado.estado, empleadoId: resultado.empleado?.id }, 'Scan: verificar');
+  res.json(resultado);
+});
+
+/**
+ * Ingreso manual por DNI (QR olvidado / sin batería / sin cámara). Misma respuesta que
+ * /verificar + `token` (para reusar confirmar/rechazar) o estado NO_ENCONTRADO.
+ * Rate limit por usuario contra enumeración de documentos.
+ */
+router.post('/documento', limiteScanDocumento(), validate({ body: documentoBody }), async (req, res) => {
+  const resultado = await verificarPorDocumento(req.valid.body.documento);
+  req.log.info({ estado: resultado.estado, empleadoId: resultado.empleado?.id }, 'Scan: verificar por documento');
   res.json(resultado);
 });
 

@@ -53,7 +53,7 @@ Si `schema.sql` se corrió con una versión anterior, ejecutar en el *SQL Editor
 |---|---|---|
 | `/` | Invitado (link público) | Ingresa DNI → ve y descarga su QR, o aviso de que no está en la lista |
 | `/login` | RRHH / Escáner | Ingreso con usuario y contraseña |
-| `/scanner` | Escáner (y RRHH) | Cámara → foto y datos → **VERIFICÁ LA IDENTIDAD**: *Confirmar ingreso* (**PUEDE PASAR**) o *No es la persona* (**INGRESO RECHAZADO**, queda auditado). También **QR YA USADO** (hora y quién) / **NO PASA** |
+| `/scanner` | Escáner (y RRHH) | Cámara → foto y datos → **VERIFICÁ LA IDENTIDAD**: *Confirmar ingreso* (**PUEDE PASAR**) o *No es la persona* (**INGRESO RECHAZADO**, queda auditado). También **QR YA USADO** (hora y quién) / **NO PASA**. Sin QR o sin cámara: botón **Ingresar DNI** → mismo flujo de verificación (con aviso *Ingresado por DNI*), **YA INGRESÓ** o **NO ESTÁ EN LA LISTA** |
 | `/admin` | RRHH | Asistencia en vivo + export Excel, empleados, importar Excel, fotos masivas, usuarios |
 
 ## Importación de Excel

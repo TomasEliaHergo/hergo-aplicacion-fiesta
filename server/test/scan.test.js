@@ -75,3 +75,46 @@ test('armarResumen: rechazos (null si no se pudo contar)', () => {
   assert.equal(armarResumen(filas, new Date(), 0).rechazos, 0);
   assert.equal(armarResumen(filas, new Date(), '4').rechazos, 4);
 });
+
+test('verificarPorDocumento: no encontrado => NO_ENCONTRADO sin llamar a verificar', async () => {
+  const { verificarPorDocumento } = await import('../src/services/asistencias.service.js');
+  let llamado = false;
+  const r = await verificarPorDocumento('11111111', {
+    buscarToken: async () => null,
+    verificarFn: async () => { llamado = true; },
+  });
+  assert.deepEqual(r, { estado: 'NO_ENCONTRADO', empleado: null, escaneado_at: null, escaneado_por_nombre: null, token: null });
+  assert.equal(llamado, false);
+});
+
+test('verificarPorDocumento: encontrado => resultado de verificar + token', async () => {
+  const { verificarPorDocumento } = await import('../src/services/asistencias.service.js');
+  const tok = 'A'.repeat(43);
+  let buscado;
+  const pendiente = aResultadoVerificacion([{ ...fila, estado: 'PENDIENTE', escaneado_at: null }], url);
+  const r = await verificarPorDocumento('42290081', {
+    buscarToken: async (d) => { buscado = d; return tok; },
+    verificarFn: async (t) => (t === tok ? pendiente : null),
+  });
+  assert.equal(buscado, '42290081');
+  assert.deepEqual(r, { ...pendiente, token: tok });
+
+  const ya = { estado: 'YA_INGRESO', empleado: pendiente.empleado, escaneado_at: 'x', escaneado_por_nombre: 'Puerta 1' };
+  const r2 = await verificarPorDocumento('42290081', { buscarToken: async () => tok, verificarFn: async () => ya });
+  assert.equal(r2.estado, 'YA_INGRESO');
+  assert.equal(r2.escaneado_por_nombre, 'Puerta 1');
+  assert.equal(r2.token, tok);
+
+  const inv = await verificarPorDocumento('42290081', {
+    buscarToken: async () => 'raro', verificarFn: async () => ({ estado: 'INVALIDO', empleado: null }),
+  });
+  assert.equal(inv.estado, 'INVALIDO');
+  assert.equal(inv.token, null);
+});
+
+test('documentoSchema: normaliza DNI con puntos y rechaza formatos inválidos', async () => {
+  const { documentoSchema } = await import('../src/lib/schemas.js');
+  assert.equal(documentoSchema.parse('30.123.456'), '30123456');
+  assert.equal(documentoSchema.parse(' 30 123 456 '), '30123456');
+  for (const malo of ['', 'abc', '1234', '1234567890123', null]) assert.equal(documentoSchema.safeParse(malo).success, false);
+});

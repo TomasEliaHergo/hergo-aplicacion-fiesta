@@ -91,6 +91,7 @@ Flujo de la puerta en dos pasos: **verificar** (solo lectura, se muestra la foto
 | Método | Path | Auth | Body | Respuesta |
 |---|---|---|---|---|
 | POST | `/api/scan/verificar` | scanner, rrhh | `{token}` | `200 {estado: "PENDIENTE"\|"YA_INGRESO"\|"INVALIDO", empleado: {id, nombre, documento, empresa, sector, foto_url}\|null, escaneado_at, escaneado_por_nombre}` · `400 VALIDACION`. **No registra nada.** 1 RPC (`verificar_qr`); formato de token inválido → `INVALIDO` sin ir a la DB. |
+| POST | `/api/scan/documento` | scanner, rrhh (rate limit **por usuario** 60/min) | `{documento}` (string o número; se normaliza a dígitos, acepta puntos; 5-12) | `200` = respuesta de `/api/scan/verificar` + `token` (para reusar `/confirmar` y `/rechazar` sin cambios) · `200 {estado:"NO_ENCONTRADO", empleado:null, escaneado_at:null, escaneado_por_nombre:null, token:null}` si el documento no está en la lista · `400 VALIDACION` · `429`. Ingreso manual cuando no hay QR (olvidado, sin batería, sin cámara). 1 consulta (`empleados.qr_token` por documento, índice único) + la RPC `verificar_qr`; **sin SQL nuevo**. **No registra nada.** El log lleva `empleadoId`, no el documento. |
 | POST | `/api/scan/confirmar` | scanner, rrhh | `{token}` | `200` con la forma de `/api/scan` (abajo): `OK`, `YA_INGRESO` (otro lo confirmó en el medio) o `INVALIDO`. RPC `registrar_asistencia` (atómica). |
 | POST | `/api/scan/rechazar` | scanner, rrhh | `{token, motivo?}` (motivo ≤ 200, opcional) | `204` · `404 NO_ENCONTRADO` (token inexistente) · `400 VALIDACION`. Inserta en `appfiesta.rechazos` (RPC `registrar_rechazo`); **no** registra el ingreso. |
 | POST | `/api/scan` | scanner, rrhh | `{token}` | Compatibilidad (registra directo, el cliente ya no lo usa). `200` siempre que el request sea válido · `400 VALIDACION` |
@@ -102,7 +103,7 @@ Flujo de la puerta en dos pasos: **verificar** (solo lectura, se muestra la foto
 ```
 `INVALIDO` → `empleado: null, escaneado_at: null`. `YA_INGRESO` devuelve la hora del **primer** ingreso. Se responde 200 en los estados de negocio para que la UI muestre la pantalla correspondiente sin manejar errores.
 
-Escáner (UI): `PENDIENTE` = pantalla azul con lunares "VERIFICÁ LA IDENTIDAD" + botones **Confirmar ingreso** / **No es la persona** (motivo opcional: *No coincide la foto*, *Sin DNI*, *Otro*). Confirmado → verde "PUEDE PASAR" (único estado con sonido de éxito; vuelve a escanear solo a los 4 s). Rechazado → rojo "INGRESO RECHAZADO" (requiere un toque). Error de red al confirmar/rechazar → "NO REGISTRADO" con **Reintentar** (conserva el token, no hay que re-escanear). Botones deshabilitados mientras hay un envío en curso (sin doble toque).
+Escáner (UI): `PENDIENTE` = pantalla azul con lunares "VERIFICÁ LA IDENTIDAD" + botones **Confirmar ingreso** / **No es la persona** (motivo opcional: *No coincide la foto*, *Sin DNI*, *Otro*). Confirmado → verde "PUEDE PASAR" (único estado con sonido de éxito; vuelve a escanear solo a los 4 s). Rechazado → rojo "INGRESO RECHAZADO" (requiere un toque). Error de red al confirmar/rechazar → "NO REGISTRADO" con **Reintentar** (conserva el token, no hay que re-escanear). Botones deshabilitados mientras hay un envío en curso (sin doble toque). **Ingresar DNI** (botón en la zona del pulgar y en la pantalla de error de cámara): hoja con input numérico; mientras está abierta la cámara queda en pausa. Usa `/api/scan/documento` y el mismo flujo (PENDIENTE con el aviso *Ingresado por DNI*; `YA_INGRESO` se titula "YA INGRESÓ"); `NO_ENCONTRADO` → rojo "NO ESTÁ EN LA LISTA" con *Probar otro DNI* (precargado para corregir) / *Volver a escanear*.
 
 ### Empleados (RRHH)
 | Método | Path | Body / query | Respuesta / errores |
@@ -266,6 +267,7 @@ Cada round trip a Supabase cuesta ~120-200 ms desde Argentina (más si la funci�
 | `GET /api/public/estado/:token` | - | 1 (0 si el formato es inválido) |
 | `POST /api/scan` | 1 auth + 1 RPC | 0-1 auth + 1 RPC |
 | `POST /api/scan/verificar` · `/confirmar` · `/rechazar` | - | 0-1 auth + 1 RPC cada uno |
+| `POST /api/scan/documento` | - | 0-1 auth + 1 consulta + 1 RPC |
 | `GET /api/empleados` (con `total`) | 1 auth + 1 | 0-1 auth + 1 |
 | `GET /api/empleados/filtros` | 1 auth + 1 | 0-1 auth + 1 (+ cache del navegador 10 s) |
 | `GET /api/asistencias/resumen` | 1 auth + 1 | 0-1 auth + 1 |

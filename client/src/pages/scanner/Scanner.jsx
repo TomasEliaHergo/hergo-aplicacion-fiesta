@@ -6,6 +6,7 @@ import {
   Check,
   CircleCheck,
   CircleX,
+  IdCard,
   LayoutDashboard,
   LogOut,
   RotateCcw,
@@ -18,13 +19,22 @@ import {
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import Avatar from '../../components/Avatar.jsx';
+import Modal from '../../components/Modal.jsx';
 import { useConfirm } from '../../components/Feedback.jsx';
 import { useDocumentTitle, useTheme } from '../../hooks/hooks.js';
-import { formatDocumento, formatHora, formatNumero } from '../../utils.js';
+import { formatDocumento, formatHora, formatNumero, soloDigitos } from '../../utils.js';
 import '../../styles/scanner.css';
 
 const AUTO_RESUME_MS = 4000;
 const DEBOUNCE_MISMO_TOKEN_MS = 5000;
+const DOC_MIN = 5;
+const DOC_MAX = 12;
+
+/** Formatea mientras se escribe: hasta 8 dígitos con puntos (30.123.456); más largos (CUIT) sin puntos. */
+function formatearDniEnCurso(valor) {
+  const d = soloDigitos(valor).slice(0, DOC_MAX);
+  return d.length <= 8 ? d.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : d;
+}
 
 // ---------- Feedback sonoro / háptico ----------
 
@@ -59,6 +69,7 @@ function feedback(estado, sonido) {
     OK: [120],
     YA_INGRESO: [120, 80, 120],
     INVALIDO: [400],
+    NO_ENCONTRADO: [400],
     RECHAZADO: [400],
     ERROR: [400],
   }[estado];
@@ -147,11 +158,13 @@ function IconoEstado({ forma }) {
 
 const SUB_ERROR = {
   verificar: 'Error de conexión · No se pudo verificar el QR',
+  documento: 'Error de conexión · No se pudo buscar el DNI',
   confirmar: 'Error de conexión · El ingreso NO se registró',
   rechazar: 'Error de conexión · El rechazo no se guardó · No dejar pasar',
 };
 
-function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, motivo }) {
+function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, motivo, origen, documento }) {
+  const porDni = origen === 'dni';
   switch (estado) {
     case 'PENDIENTE':
       return { clase: 'res-verify', forma: 'verify', titulo: 'VERIFICÁ LA IDENTIDAD', sub: 'Compará la foto con la persona' };
@@ -162,7 +175,7 @@ function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, m
       return {
         clase: 'res-warn',
         forma: 'warn',
-        titulo: 'QR YA USADO',
+        titulo: porDni ? 'YA INGRESÓ' : 'QR YA USADO',
         sub: escaneado_at ? `Ingresó a las ${formatHora(escaneado_at)}${quien}` : null,
         nota: 'No dejar pasar sin consultar',
       };
@@ -175,6 +188,14 @@ function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, m
         sub: motivo ? `Motivo: ${motivo}` : null,
         nota: 'No dejar pasar · Derivar a RRHH',
       };
+    case 'NO_ENCONTRADO':
+      return {
+        clase: 'res-bad',
+        forma: 'bad',
+        titulo: 'NO ESTÁ EN LA LISTA',
+        sub: `Documento ${formatDocumento(documento)} no figura entre los invitados`,
+        nota: 'No dejar pasar · Derivar a RRHH',
+      };
     case 'ERROR':
       return {
         clase: 'res-error',
@@ -184,7 +205,7 @@ function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, m
       };
     case 'INVALIDO':
     default:
-      return { clase: 'res-bad', forma: 'bad', titulo: 'NO PASA', sub: 'QR no válido' };
+      return { clase: 'res-bad', forma: 'bad', titulo: 'NO PASA', sub: porDni ? 'No se pudo validar el documento' : 'QR no válido' };
   }
 }
 
@@ -283,8 +304,8 @@ function Decision({ enviando, onConfirmar, onRechazar }) {
   );
 }
 
-function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onReintentar, autoResume }) {
-  const { estado, empleado, mensaje } = resultado;
+function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onReintentar, onOtroDni, autoResume }) {
+  const { estado, empleado, mensaje, origen } = resultado;
   const btnRef = useRef(null);
   const tituloRef = useRef(null);
   useEffect(() => {
@@ -294,7 +315,11 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
   }, [estado]);
 
   const config = configResultado(resultado);
-  const reintentable = estado === 'ERROR' && Boolean(resultado.token && resultado.accion);
+  const reintentable =
+    estado === 'ERROR' &&
+    (resultado.accion === 'documento' ? Boolean(resultado.documento) : Boolean(resultado.token && resultado.accion));
+  const noEncontrado = estado === 'NO_ENCONTRADO';
+  const doble = reintentable || noEncontrado;
 
   return (
     <div className={`scan-result ${config.clase}`} role="alert" aria-live="assertive">
@@ -306,6 +331,12 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
           </h1>
           {config.sub && <p className="scan-result-sub">{config.sub}</p>}
           {config.nota && <p className="scan-result-nota">{config.nota}</p>}
+          {origen === 'dni' && estado === 'PENDIENTE' && (
+            <p className="scan-badge-dni">
+              <IdCard size={18} aria-hidden="true" />
+              Ingresado por DNI · Pedí el documento
+            </p>
+          )}
         </div>
       </div>
 
@@ -316,7 +347,11 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
           <p className="scan-msg">
             {estado === 'ERROR'
               ? mensaje || 'No se pudo conectar con el servidor. Verificá la conexión.'
-              : 'Este código no corresponde a ningún invitado. Pedile a la persona que muestre su QR correcto o derivala a RRHH.'}
+              : noEncontrado
+                ? 'Revisá que el número esté bien escrito. Si es correcto, derivá a la persona a RRHH.'
+                : origen === 'dni'
+                  ? 'No se pudo validar este documento. Derivá a la persona a RRHH.'
+                  : 'Este código no corresponde a ningún invitado. Pedile a la persona que muestre su QR correcto o derivala a RRHH.'}
           </p>
         </div>
       )}
@@ -328,7 +363,13 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
           onRechazar={(motivo) => onRechazar(resultado, motivo)}
         />
       ) : (
-        <div className={`scan-next-bar${reintentable ? ' scan-next-bar-doble' : ''}`}>
+        <div className={`scan-next-bar${doble ? ' scan-next-bar-doble' : ''}`}>
+          {noEncontrado && (
+            <button ref={btnRef} type="button" className="btn btn-scan-next" onClick={() => onOtroDni(resultado.documento)}>
+              <IdCard size={24} aria-hidden="true" />
+              Probar otro DNI
+            </button>
+          )}
           {reintentable && (
             <button
               ref={btnRef}
@@ -343,14 +384,14 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
             </button>
           )}
           <button
-            ref={reintentable ? undefined : btnRef}
+            ref={doble ? undefined : btnRef}
             type="button"
-            className={`btn btn-scan-next${reintentable ? ' btn-scan-next-sec' : ''}`}
+            className={`btn btn-scan-next${doble ? ' btn-scan-next-sec' : ''}`}
             disabled={Boolean(enviando)}
             onClick={onNext}
           >
             <ScanLine size={24} aria-hidden="true" />
-            Escanear siguiente
+            {noEncontrado ? 'Volver a escanear' : 'Escanear siguiente'}
           </button>
         </div>
       )}
@@ -358,6 +399,92 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
         <div className="scan-countdown" style={{ animationDuration: `${AUTO_RESUME_MS}ms` }} aria-hidden="true" />
       )}
     </div>
+  );
+}
+
+// ---------- Ingreso manual por DNI ----------
+
+/** Hoja inferior (Modal nativo) con un input numérico grande. Valida 5-12 dígitos antes de buscar. */
+function DniSheet({ open, inicial, error: errorExterno, onBuscar, onCerrar }) {
+  const [valor, setValor] = useState('');
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setValor(formatearDniEnCurso(inicial || ''));
+    setError(errorExterno || '');
+    // El <dialog> se abre en el efecto del Modal (después de este): enfocar en el próximo tick.
+    const t = setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open, inicial, errorExterno]);
+
+  const submit = (e) => {
+    e.preventDefault();
+    const doc = soloDigitos(valor);
+    if (doc.length < DOC_MIN || doc.length > DOC_MAX) {
+      setError(`Ingresá entre ${DOC_MIN} y ${DOC_MAX} dígitos.`);
+      inputRef.current?.focus();
+      return;
+    }
+    onBuscar(doc);
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="Ingresar DNI"
+      size="sm"
+      onClose={onCerrar}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary btn-lg" onClick={onCerrar}>
+            Cancelar
+          </button>
+          <button type="submit" form="scan-dni-form" className="btn btn-primary btn-lg">
+            Buscar
+          </button>
+        </>
+      }
+    >
+      <form id="scan-dni-form" className="field scan-dni-form" onSubmit={submit} noValidate>
+        <label htmlFor="scan-dni-input">Número de documento</label>
+        <input
+          ref={inputRef}
+          id="scan-dni-input"
+          className="scan-dni-input"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          placeholder="30.123.456"
+          maxLength={16}
+          value={valor}
+          aria-invalid={error ? 'true' : undefined}
+          aria-describedby={error ? 'scan-dni-error' : 'scan-dni-hint'}
+          onChange={(e) => {
+            setValor(formatearDniEnCurso(e.target.value));
+            if (error) setError('');
+          }}
+        />
+        {error ? (
+          <p id="scan-dni-error" className="field-error scan-dni-msg" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p id="scan-dni-hint" className="field-hint scan-dni-msg">
+            Solo números; los puntos son opcionales. Usalo si la persona no tiene el QR.
+          </p>
+        )}
+      </form>
+    </Modal>
   );
 }
 
@@ -385,6 +512,9 @@ export default function Scanner() {
   const [contador, setContador] = useState({ confirmados: 0, rechazados: 0 });
   const [enviando, setEnviando] = useState(null); // 'confirmar' | 'rechazar' | null
   const enviandoRef = useRef(false); // guarda síncrona contra doble toque
+  // Ingreso manual por DNI: hoja abierta, valor precargado (corrección) y error del servidor.
+  const [dni, setDni] = useState({ abierto: false, inicial: '', error: '' });
+  const dniBtnRef = useRef(null);
 
   useEffect(() => {
     sonidoRef.current = sonido;
@@ -461,21 +591,21 @@ export default function Scanner() {
 
   /** Paso 2a: confirmar => registra el ingreso (OK, o YA_INGRESO si otro confirmó antes). */
   const confirmar = useCallback(
-    ({ token, empleado }) =>
+    ({ token, empleado, origen }) =>
       ejecutar('confirmar', async () => {
         try {
           const r = await api.post('/scan/confirmar', { token });
           if (r.estado === 'OK') setContador((c) => ({ ...c, confirmados: c.confirmados + 1 }));
           // Si el token dejó de existir (empleado borrado) llega INVALIDO sin datos.
-          mostrar({ ...r, token });
+          mostrar({ ...r, token, origen });
         } catch (err) {
           if (err.status === 401) return;
           if (err.status === 400) {
-            mostrar({ estado: 'INVALIDO', empleado: null, escaneado_at: null });
+            mostrar({ estado: 'INVALIDO', empleado: null, escaneado_at: null, origen });
             return;
           }
           // Se conserva el token: "Reintentar" confirma sin volver a escanear.
-          mostrar({ estado: 'ERROR', empleado, token, accion: 'confirmar', mensaje: err.message });
+          mostrar({ estado: 'ERROR', empleado, token, origen, accion: 'confirmar', mensaje: err.message });
         }
       }),
     [ejecutar, mostrar],
@@ -483,26 +613,81 @@ export default function Scanner() {
 
   /** Paso 2b: "No es la persona" => auditoría del rechazo; NO registra el ingreso. */
   const rechazar = useCallback(
-    ({ token, empleado }, motivo) =>
+    ({ token, empleado, origen }, motivo) =>
       ejecutar('rechazar', async () => {
         try {
           await api.post('/scan/rechazar', motivo ? { token, motivo } : { token });
           setContador((c) => ({ ...c, rechazados: c.rechazados + 1 }));
-          mostrar({ estado: 'RECHAZADO', empleado, token, motivo });
+          mostrar({ estado: 'RECHAZADO', empleado, token, motivo, origen });
         } catch (err) {
           if (err.status === 401) return;
           if (err.status === 404) {
-            mostrar({ estado: 'INVALIDO', empleado: null, escaneado_at: null });
+            mostrar({ estado: 'INVALIDO', empleado: null, escaneado_at: null, origen });
             return;
           }
-          mostrar({ estado: 'ERROR', empleado, token, motivo, accion: 'rechazar', mensaje: err.message });
+          mostrar({ estado: 'ERROR', empleado, token, motivo, origen, accion: 'rechazar', mensaje: err.message });
         }
       }),
     [ejecutar, mostrar],
   );
 
+  /** Pausa la cámara (un QR a la vista no debe dispararse) y abre la hoja del DNI. */
+  const abrirDni = useCallback((inicial = '', error = '') => {
+    clearTimeout(resumeTimer.current);
+    busyRef.current = true;
+    try {
+      const qr = qrRef.current;
+      if (qr && qr.getState() === Html5QrcodeScannerState.SCANNING) qr.pause(true);
+    } catch {
+      /* ignorar */
+    }
+    setResultado(null);
+    setDni({ abierto: true, inicial, error });
+  }, []);
+
+  /** Cancelar / Esc: vuelve a escanear y devuelve el foco al botón "Ingresar DNI". */
+  const cerrarDni = useCallback(() => {
+    setDni((d) => ({ ...d, abierto: false }));
+    reanudar();
+    setTimeout(() => dniBtnRef.current?.focus(), 0);
+  }, [reanudar]);
+
+  /** Busca por DNI y reusa el mismo flujo de resultado que un QR (PENDIENTE -> confirmar/rechazar). */
+  const buscarDni = useCallback(
+    async (documento) => {
+      setDni((d) => ({ ...d, abierto: false }));
+      busyRef.current = true;
+      setProcesando(true);
+      let res;
+      try {
+        const r = await api.post('/scan/documento', { documento });
+        res =
+          r.estado === 'NO_ENCONTRADO'
+            ? { estado: 'NO_ENCONTRADO', empleado: null, documento, origen: 'dni' }
+            : { ...r, token: r.token ?? null, documento, origen: 'dni' };
+      } catch (err) {
+        if (err.status === 401) return; // el AuthContext redirige al login
+        if (err.status === 400) {
+          // Formato rechazado por el servidor: volver a la hoja para corregir.
+          setDni({ abierto: true, inicial: documento, error: err.message || 'Documento inválido' });
+          return;
+        }
+        res = { estado: 'ERROR', empleado: null, documento, origen: 'dni', accion: 'documento', mensaje: err.message };
+      } finally {
+        setProcesando(false);
+      }
+      mostrar(res);
+    },
+    [mostrar],
+  );
+
   const reintentar = useCallback(
     (res) => {
+      if (res.accion === 'documento') {
+        setResultado(null);
+        buscarDni(res.documento);
+        return;
+      }
       if (res.accion === 'confirmar') confirmar(res);
       else if (res.accion === 'rechazar') rechazar(res, res.motivo);
       else if (res.accion === 'verificar') {
@@ -511,7 +696,7 @@ export default function Scanner() {
         verificar(res.token);
       }
     },
-    [confirmar, rechazar, verificar],
+    [confirmar, rechazar, verificar, buscarDni],
   );
 
   const procesar = useCallback(
@@ -687,10 +872,24 @@ export default function Scanner() {
           </div>
         )}
 
-        {camEstado === 'activa' && !resultado && !procesando && (
-          <p className="scanner-hint" role="status">
-            Apuntá la cámara al código QR
-          </p>
+        {camEstado !== 'error' && !resultado && !procesando && (
+          <div className="scanner-bottom">
+            {camEstado === 'activa' && (
+              <p className="scanner-hint" role="status">
+                Apuntá la cámara al código QR
+              </p>
+            )}
+            <button
+              ref={dniBtnRef}
+              type="button"
+              className="btn scanner-dni-btn"
+              aria-haspopup="dialog"
+              onClick={() => abrirDni()}
+            >
+              <IdCard size={22} aria-hidden="true" />
+              Ingresar DNI
+            </button>
+          </div>
         )}
 
         {procesando && !resultado && (
@@ -706,26 +905,42 @@ export default function Scanner() {
               <CameraOff size={32} />
             </span>
             <p>{camError}</p>
-            <button type="button" className="btn btn-primary btn-lg" onClick={reintentarCamara}>
-              <RotateCcw size={18} aria-hidden="true" />
-              Reintentar
-            </button>
+            <p className="scanner-error-alt">Podés seguir validando invitados con el número de documento.</p>
+            <div className="scanner-error-actions">
+              <button
+                ref={dniBtnRef}
+                type="button"
+                className="btn btn-primary btn-lg scanner-error-dni"
+                aria-haspopup="dialog"
+                onClick={() => abrirDni()}
+              >
+                <IdCard size={22} aria-hidden="true" />
+                Ingresar DNI
+              </button>
+              <button type="button" className="btn btn-secondary btn-lg" onClick={reintentarCamara}>
+                <RotateCcw size={18} aria-hidden="true" />
+                Reintentar cámara
+              </button>
+            </div>
           </div>
         )}
 
         {resultado && (
           <ResultCard
-            key={`${resultado.estado}-${resultado.token ?? ''}`}
+            key={`${resultado.estado}-${resultado.token ?? resultado.documento ?? ''}`}
             resultado={resultado}
             enviando={enviando}
             onNext={reanudar}
             onConfirmar={confirmar}
             onRechazar={rechazar}
             onReintentar={reintentar}
+            onOtroDni={(doc) => abrirDni(doc)}
             autoResume={resultado.estado === 'OK'}
           />
         )}
       </main>
+
+      <DniSheet open={dni.abierto} inicial={dni.inicial} error={dni.error} onBuscar={buscarDni} onCerrar={cerrarDni} />
     </div>
   );
 }

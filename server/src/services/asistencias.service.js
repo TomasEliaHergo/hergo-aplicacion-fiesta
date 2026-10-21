@@ -72,6 +72,29 @@ export async function verificar(token) {
   return aResultadoVerificacion(check({ data, error }));
 }
 
+const NO_ENCONTRADO_DOCUMENTO = Object.freeze({
+  estado: 'NO_ENCONTRADO', empleado: null, escaneado_at: null, escaneado_por_nombre: null, token: null,
+});
+
+/** Busca el qr_token de un empleado por documento ya normalizado (1 consulta). */
+async function tokenPorDocumento(documento) {
+  const fila = check(await getSupabase().from('empleados').select('qr_token').eq('documento', documento).maybeSingle());
+  return fila?.qr_token ?? null;
+}
+
+/**
+ * Ingreso manual por DNI en la puerta: documento (normalizado) -> qr_token -> verificar().
+ * Devuelve el resultado de verificar() + `token` para que el cliente reuse confirmar/rechazar.
+ * NO_ENCONTRADO si el documento no está en la lista. Dependencias inyectables para tests.
+ */
+export async function verificarPorDocumento(documento, { buscarToken = tokenPorDocumento, verificarFn = verificar } = {}) {
+  const token = await buscarToken(documento);
+  if (!token) return { ...NO_ENCONTRADO_DOCUMENTO };
+  const r = await verificarFn(token);
+  // INVALIDO no debería pasar (token salido de la DB); no se expone un token inutilizable.
+  return { ...r, token: r.estado === 'INVALIDO' ? null : token };
+}
+
 /**
  * Registra un rechazo ("No es la persona") para auditoría. NO registra asistencia.
  * @returns {Promise<string|null>} empleado_id, o null si el token no existe.
