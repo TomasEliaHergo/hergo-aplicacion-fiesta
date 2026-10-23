@@ -15,7 +15,8 @@
     "test": "node --test",
     "reset:local": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true});console.log('server/.data borrado')\"",
     "dev:local": "node scripts/dev-local.js",
-    "reset:datos": "node scripts/reset-datos.js"
+    "reset:datos": "node scripts/reset-datos.js",
+    "reset:invitados": "node scripts/reset-datos.js --solo-invitados"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

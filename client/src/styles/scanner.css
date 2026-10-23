@@ -1,6 +1,6 @@
 /* =========================================================================
-   Escáner de la puerta: cámara a pantalla completa + resultado gigante.
-   Estados distinguibles sin color: forma del ícono + rayas en fondo.
+   Escáner de la puerta: cámara a pantalla completa + tarjeta de resultado.
+   Estados distinguibles sin color: forma de la insignia + rayas en la banda.
    ========================================================================= */
 
 .scanner-page {
@@ -8,6 +8,10 @@
   --warn-bg: #fdb022;
   --bad-bg: #b42318;
   --verify-bg: #1849a9;
+  /* anillos y bordes sobre el fondo oscuro (más luminosos que las bandas) */
+  --ok-ring: #16a34a;
+  --bad-ring: #dc2626;
+  --verify-ring: #2563eb;
   position: fixed;
   inset: 0;
   display: flex;
@@ -343,107 +347,6 @@
   animation: spin 0.8s linear infinite;
 }
 
-/* ---------- Resultado ---------- */
-
-.scan-result {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--sp-4) var(--sp-4) 0;
-  overflow-y: auto;
-  animation: pop 0.18s ease-out;
-}
-@keyframes pop {
-  from {
-    transform: scale(0.96);
-    opacity: 0;
-  }
-}
-.res-ok {
-  background: var(--ok-bg);
-  color: #fff;
-}
-/* Rayas diagonales: textura que distingue advertencia/rechazo sin depender del color */
-.res-warn {
-  background-color: var(--warn-bg);
-  background-image: repeating-linear-gradient(-45deg, rgb(0 0 0 / 0.09) 0 14px, transparent 14px 28px);
-  color: #1c1300;
-}
-.res-bad {
-  background-color: var(--bad-bg);
-  background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.16) 0 14px, transparent 14px 28px);
-  color: #fff;
-}
-/* Verificar identidad: azul con lunares (textura distinta de rayas / liso) */
-.res-verify {
-  background-color: var(--verify-bg);
-  background-image: radial-gradient(rgb(255 255 255 / 0.1) 2px, transparent 2.6px);
-  background-size: 18px 18px;
-  color: #fff;
-}
-.res-error {
-  background-color: #344054;
-  background-image: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.07) 0 14px, transparent 14px 28px);
-  color: #fff;
-}
-.scan-result-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 4px 14px;
-  width: 100%;
-  max-width: 480px;
-  margin-bottom: var(--sp-3);
-}
-.scan-result-icon {
-  flex-shrink: 0;
-  width: clamp(72px, 22vw, 110px);
-  height: clamp(72px, 22vw, 110px);
-}
-.scan-result-texts {
-  flex: 1 1 min-content;
-  min-width: 0;
-}
-.scan-result-title {
-  font-size: clamp(2.4rem, 12vw, 4rem);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  margin: 0;
-}
-.scan-result-sub {
-  font-size: var(--fs-20);
-  font-weight: 700;
-  line-height: 1.25;
-  margin: 6px 0 0;
-}
-.scan-result-nota {
-  font-size: var(--fs-16);
-  font-weight: 700;
-  line-height: 1.25;
-  margin: 4px 0 0;
-  opacity: 0.92;
-}
-/* Aviso en la tarjeta de verificación: el ingreso fue por DNI, revisar foto / documento con cuidado */
-.scan-badge-dni {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0 0;
-  padding: 4px 12px;
-  border: 2px solid #fde047;
-  border-radius: var(--r-full);
-  background: #101828;
-  color: #fde047;
-  font-size: var(--fs-14);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
 /* Hoja "Ingresar DNI" (Modal claro) */
 .scan-dni-form .scan-dni-input {
   min-height: 64px;
@@ -461,273 +364,289 @@
   font-size: var(--fs-14);
 }
 
+/* ---------- Resultado ----------
+   Banda de color arriba (ícono + título), cuerpo oscuro que scrollea si no entra
+   y barra de acciones fija abajo. La banda y la barra nunca se desplazan. */
+
+.scan-result {
+  --st-ring: var(--ok-ring);
+  --res-surface: #131b2e;
+  --res-line: #24304a;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--night);
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scan-result {
+    animation: pop 0.18s ease-out;
+  }
+}
+@keyframes pop {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+}
+
+/* Banda de estado */
+.scan-band {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
+  color: #fff;
+}
+.scan-band-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  background: rgb(255 255 255 / 0.16);
+}
+.scan-band-texts {
+  min-width: 0;
+}
+.scan-result-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+  overflow-wrap: normal;
+  hyphens: none;
+  /* nunca más de dos líneas */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
 /* El título recibe foco programático (lectores de pantalla); sin anillo visual. */
 .scan-result-title:focus {
   outline: none;
 }
+.scan-result-sub {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0.92;
+}
+
+/* Verificar: azul, insignia cuadrada redondeada */
+.res-verify {
+  --st-ring: var(--verify-ring);
+}
+.res-verify .scan-band {
+  background: var(--verify-bg);
+}
+.res-verify .scan-band-badge {
+  border-radius: 12px;
+}
+/* OK: verde, insignia circular */
+.res-ok .scan-band {
+  background: var(--ok-bg);
+}
+.res-ok .scan-band-badge {
+  border-radius: 50%;
+}
+/* Rechazo / inválido: rojo con rayas, insignia de esquinas chicas */
+.res-bad {
+  --st-ring: var(--bad-ring);
+}
+.res-bad .scan-band {
+  background-color: var(--bad-bg);
+  background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.14) 0 12px, transparent 12px 24px);
+}
+.res-bad .scan-band-badge {
+  border-radius: 6px;
+}
+/* Ya ingresó: ámbar con texto oscuro, insignia triangular */
+.res-warn {
+  --st-ring: var(--warn-bg);
+}
+.res-warn .scan-band {
+  background-color: var(--warn-bg);
+  background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.08) 0 12px, transparent 12px 24px);
+  color: #1c1300;
+}
+.res-warn .scan-band-badge {
+  clip-path: polygon(50% 4%, 98% 94%, 2% 94%);
+  padding-top: 8px;
+  background: rgb(0 0 0 / 0.18);
+}
+/* Error de conexión: gris neutro con rayas claras */
+.res-error {
+  --st-ring: #667085;
+}
+.res-error .scan-band {
+  background-color: #344054;
+  background-image: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.07) 0 12px, transparent 12px 24px);
+}
+.res-error .scan-band-badge {
+  border-radius: 10px;
+}
+
+/* Cuerpo: scrollea por dentro si no entra */
 .scan-result-body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.scan-result-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 12px;
   width: 100%;
   max-width: 440px;
+  margin: 0 auto;
+  padding: 18px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
 }
 .scan-photo-wrap {
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: none;
 }
-.scan-photo {
-  width: min(60vw, 240px) !important;
-  height: min(60vw, 240px) !important;
-  border: 5px solid rgb(255 255 255 / 0.92);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
-  font-size: min(20vw, 84px) !important;
+.avatar.scan-photo {
+  /* el Avatar fija el tamaño inline; acá se adapta a pantallas bajas */
+  width: min(200px, 28dvh) !important;
+  height: min(200px, 28dvh) !important;
+  min-width: 120px;
+  min-height: 120px;
+  border-radius: 22px;
+  box-shadow: 0 0 0 4px var(--st-ring);
+  margin: 4px;
+  font-size: min(72px, 10dvh) !important;
 }
-.res-warn .scan-photo {
-  border-color: #1c1300;
+.avatar.scan-photo-sm {
+  width: min(132px, 20dvh) !important;
+  height: min(132px, 20dvh) !important;
+  min-width: 96px;
+  min-height: 96px;
+  border-radius: 18px;
+  font-size: min(48px, 7dvh) !important;
 }
 .scan-nofoto {
   position: relative;
   margin: -16px 0 0;
-  padding: 5px 14px;
+  padding: 4px 12px;
   border: 2px solid #fde047;
   border-radius: var(--r-full);
   background: #101828;
   color: #fde047;
   font-weight: 800;
-  font-size: var(--fs-16);
+  font-size: var(--fs-14);
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.scan-name {
-  font-size: clamp(1.4rem, 6vw, 2rem);
-  font-weight: 800;
+.scan-tag-dni {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid rgb(242 193 78 / 0.35);
+  border-radius: var(--r-full);
+  background: rgb(242 193 78 / 0.14);
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-weight: 700;
   text-align: center;
-  margin: 10px 0 8px;
-  line-height: 1.15;
-  letter-spacing: -0.015em;
+}
+.scan-name {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
   overflow-wrap: anywhere;
 }
 .scan-data {
-  margin: 0;
   width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  margin: 0;
+  border: 1px solid var(--res-line);
+  border-radius: 14px;
+  background: var(--res-surface);
 }
 .scan-data div {
-  min-width: 0;
   display: flex;
-  flex-direction: column;
-  padding: 6px 12px;
-  border-radius: var(--r-sm);
-  background: rgb(0 0 0 / 0.16);
-  font-size: 1.1rem;
-}
-.scan-data .scan-data-full {
-  grid-column: 1 / -1;
-  flex-direction: row;
   justify-content: space-between;
-  gap: var(--sp-4);
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+.scan-data div + div {
+  border-top: 1px solid var(--res-line);
 }
 .scan-data dt {
-  opacity: 0.88;
-  font-size: var(--fs-14);
-}
-.scan-data .scan-data-full dt {
-  font-size: inherit;
+  flex: none;
+  color: var(--ink-3);
 }
 .scan-data dd {
+  min-width: 0;
   margin: 0;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   overflow-wrap: anywhere;
 }
-.scan-msg {
-  font-size: 1.2rem;
-  text-align: center;
-  max-width: 360px;
-  margin-top: var(--sp-4);
-}
-/* Barra inferior fija: el botón siempre visible aunque el contenido no entre */
-.scan-next-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: center;
+.scan-reason {
   width: 100%;
-  max-width: 440px;
-  margin-top: auto;
-  padding: var(--sp-3) 0 max(14px, env(safe-area-inset-bottom));
-}
-.btn-scan-next {
-  width: 100%;
-  min-height: 60px;
-  border: none;
-  border-radius: 14px;
-  background: #fff;
-  color: var(--night);
-  font-size: var(--fs-20);
-  font-weight: 800;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.28);
-}
-.btn-scan-next:hover:not(:disabled) {
-  --btn-bg: #fff;
-  background: #f2f4f7;
-}
-.res-warn .btn-scan-next {
-  background: var(--night);
-  color: #fff;
-}
-/* Anillo de dos tonos: visible sobre cualquier fondo de estado */
-.btn-scan-next:focus-visible {
-  outline: 3px solid #fff;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 7px #000;
-}
-.res-warn .btn-scan-next:focus-visible {
-  outline-color: #000;
-  box-shadow: 0 0 0 7px #fff;
-}
-/* Dos botones apilados (error reintentable): Reintentar + Escanear siguiente */
-.scan-next-bar-doble {
-  flex-direction: column;
-  gap: 10px;
-}
-.btn-scan-next-sec {
-  min-height: 56px;
-  background: transparent;
-  color: #fff;
-  border: 2px solid rgb(255 255 255 / 0.85);
-  box-shadow: none;
-}
-.btn-scan-next-sec:hover:not(:disabled) {
-  background: rgb(255 255 255 / 0.1);
-}
-
-/* ---------- Decisión: confirmar / no es la persona (zona del pulgar) ---------- */
-.scan-decision-bar {
-  flex-direction: column;
-  gap: 10px;
-}
-.scan-decision {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  width: 100%;
-}
-@media (max-width: 359px) {
-  .scan-decision {
-    grid-template-columns: 1fr;
-  }
-}
-.scan-decision .btn {
-  min-height: 64px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  font-size: 1.15rem;
-  font-weight: 800;
-  line-height: 1.15;
-  text-align: center;
-  white-space: normal;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.28);
-}
-.scan-btn-confirmar {
-  --btn-bg: #067647;
-  --btn-fg: #fff;
-  --btn-border: #fff;
-  background: #067647;
-  color: #fff;
-  border: 3px solid #fff !important;
-}
-.scan-btn-confirmar:hover:not(:disabled) {
-  --btn-bg: #05603a;
-  background: #05603a;
-}
-.scan-btn-rechazar {
-  --btn-bg: #fff;
-  --btn-fg: #b42318;
-  --btn-border: #b42318;
-  background: #fff;
-  color: #b42318;
-  border: 3px solid #b42318 !important;
-}
-.scan-btn-rechazar:hover:not(:disabled) {
-  --btn-bg: #fef3f2;
-  background: #fef3f2;
-}
-.scan-btn-volver {
-  --btn-bg: transparent;
-  --btn-fg: #fff;
-  background: transparent;
-  color: #fff;
-  border: 2px solid rgb(255 255 255 / 0.85) !important;
-  box-shadow: none !important;
-}
-.scan-btn-volver:hover:not(:disabled) {
-  --btn-bg: rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.1);
-}
-.scan-decision .btn:disabled {
-  opacity: 0.7;
-}
-.scan-decision .btn:focus-visible,
-.scan-motivo:focus-visible {
-  outline: 3px solid #fff;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 7px #000;
-}
-.scan-btn-spinner {
-  width: 22px;
-  height: 22px;
-  border-width: 3px;
-}
-.scan-motivo-titulo {
   margin: 0;
-  width: 100%;
-  font-size: var(--fs-16);
-  font-weight: 800;
+  padding: 10px 14px;
+  border: 1px solid rgb(220 38 38 / 0.4);
+  border-radius: 12px;
+  background: rgb(220 38 38 / 0.12);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
-.scan-motivo-titulo span {
-  font-weight: 500;
-  opacity: 0.85;
+.scan-reason b {
+  display: block;
+  margin-bottom: 2px;
+  color: #fca5a5;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
-.scan-motivos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
+.scan-hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  text-align: center;
 }
-.scan-motivo {
-  --btn-bg: rgb(255 255 255 / 0.14);
-  --btn-fg: #fff;
-  flex: 1 1 auto;
-  min-height: 52px;
-  padding: 6px 16px;
-  border-radius: var(--r-full);
-  background: rgb(255 255 255 / 0.14);
-  color: #fff;
-  border: 2px solid rgb(255 255 255 / 0.85) !important;
-  font-size: var(--fs-16);
-  font-weight: 700;
-}
-.scan-motivo:hover:not(:disabled) {
-  --btn-bg: rgb(255 255 255 / 0.24);
-  background: rgb(255 255 255 / 0.24);
+.scan-msg {
+  max-width: 360px;
+  margin: var(--sp-2) 0 0;
+  font-size: 1.1rem;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--ink-2);
 }
 
+/* Barra de cuenta regresiva (OK): justo arriba de la barra de acciones */
 .scan-countdown {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  z-index: 2;
-  width: 100%;
-  height: 6px;
-  background: rgb(255 255 255 / 0.75);
+  flex: none;
+  height: 4px;
+  background: rgb(255 255 255 / 0.12);
+}
+.scan-countdown i {
+  display: block;
+  height: 100%;
+  background: #fff;
   transform-origin: left;
   animation: countdown linear forwards;
 }
@@ -740,61 +659,247 @@
   }
 }
 
-/* Pantallas bajas (p. ej. 360x640): todo entra sin scroll */
+/* ---------- Acciones (barra fija al pie y hoja de motivo) ---------- */
+.scan-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.scan-actions-bar {
+  flex: none;
+  padding: 12px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  border-top: 1px solid var(--res-line);
+  background: var(--night);
+}
+.scan-actions-one {
+  grid-template-columns: 1fr;
+}
+.scan-actions-bar > * {
+  width: 100%;
+  max-width: 440px;
+  justify-self: center;
+}
+.scan-actions-bar:not(.scan-actions-one) {
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  justify-content: center;
+}
+.scan-btn {
+  min-height: 56px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  border-width: 2px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+.scan-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.scan-btn:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+.scan-btn:disabled {
+  opacity: 0.6;
+}
+.scan-btn-ok {
+  --btn-bg: var(--ok-bg);
+  --btn-fg: #fff;
+  --btn-border: var(--ok-bg);
+}
+.scan-btn-ok:hover:not(:disabled) {
+  --btn-bg: #05603a;
+  --btn-border: #05603a;
+}
+.scan-btn-no {
+  --btn-bg: transparent;
+  --btn-fg: #fca5a5;
+  --btn-border: var(--bad-ring);
+}
+.scan-btn-no:hover:not(:disabled) {
+  --btn-bg: rgb(220 38 38 / 0.12);
+}
+.scan-btn-light {
+  --btn-bg: #f4f1ea;
+  --btn-fg: var(--night);
+  --btn-border: #f4f1ea;
+}
+.scan-btn-light:hover:not(:disabled) {
+  --btn-bg: #fff;
+  --btn-border: #fff;
+}
+.scan-btn-ghost {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink);
+  --btn-border: var(--res-line, #24304a);
+  border-width: 1px;
+}
+.scan-btn-ghost:hover:not(:disabled) {
+  --btn-bg: rgb(255 255 255 / 0.06);
+}
+.scan-btn-danger {
+  --btn-bg: var(--bad-ring);
+  --btn-fg: #fff;
+  --btn-border: var(--bad-ring);
+}
+.scan-btn-danger:hover:not(:disabled) {
+  --btn-bg: var(--bad-bg);
+  --btn-border: var(--bad-bg);
+}
+.scan-btn-spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
+}
+
+/* Hoja inferior "¿Por qué no pasa?" (<dialog> nativo, tema oscuro) */
+.scan-sheet {
+  --res-surface: #131b2e;
+  --res-line: #24304a;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 16px);
+  margin: auto auto 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--res-line);
+  border-radius: 22px 22px 0 0;
+  background: #111a2c;
+  color: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color-scheme: dark;
+}
+.scan-sheet::backdrop {
+  background: rgb(3 6 14 / 0.72);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scan-sheet[open] {
+    animation: sheet-in 0.24s var(--ease);
+  }
+}
+.scan-sheet-inner {
+  display: grid;
+  gap: 12px;
+  padding: 10px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.scan-sheet-grab {
+  justify-self: center;
+  width: 40px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--res-line);
+}
+.scan-sheet-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+.scan-sheet-sub {
+  margin: -6px 0 0;
+  color: var(--ink-3);
+  font-size: 0.85rem;
+}
+.scan-opts {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.scan-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--res-line);
+  border-radius: 12px;
+  background: var(--res-surface);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.scan-opt input {
+  appearance: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 2px solid var(--ink-3);
+  border-radius: 50%;
+  background: transparent;
+}
+.scan-opt input:checked {
+  border-color: var(--bad-ring);
+  background: var(--bad-ring);
+  box-shadow: inset 0 0 0 3px #111a2c;
+}
+.scan-opt input:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+.scan-opt:has(input:checked) {
+  border-color: var(--bad-ring);
+  background: rgb(220 38 38 / 0.1);
+}
+.scan-opts:disabled .scan-opt {
+  opacity: 0.6;
+  cursor: default;
+}
+.scan-sheet-field {
+  display: grid;
+  gap: 6px;
+}
+.scan-sheet-field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.scan-sheet-field input {
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--res-line);
+  border-radius: 12px;
+  background: var(--night);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+.scan-sheet-field input:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 1px;
+}
+.scan-sheet .scan-actions {
+  padding-top: 4px;
+}
+
+/* Pantallas bajas (p. ej. 360x640) */
 @media (max-height: 640px) {
   .scanner-bar {
     min-height: 48px;
   }
-  .scan-result {
-    padding-top: 10px;
-  }
-  .scan-result-head {
-    margin-bottom: 6px;
-  }
-  .scan-result-icon {
-    width: 64px;
-    height: 64px;
-  }
-  .scan-result-sub {
-    font-size: 1.1rem;
-    margin-top: 3px;
-  }
-  .scan-photo {
-    width: min(60vw, 240px, 30vh) !important;
-    height: min(60vw, 240px, 30vh) !important;
-    border-width: 4px;
-  }
-  .scan-nofoto {
-    margin-top: -12px;
-    font-size: 0.9rem;
-    padding: 3px 11px;
-  }
-  .scan-name {
-    margin: 6px 0 5px;
-    font-size: clamp(1.25rem, 5.5vw, 1.6rem);
-  }
-  .scan-data {
-    gap: 4px;
-  }
-  .scan-data div {
-    padding: 4px 10px;
-    font-size: 1rem;
-  }
-  .scan-next-bar {
-    padding-top: 8px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-  }
-  .btn-scan-next {
-    min-height: 54px;
-  }
   .scanner-dni-btn {
     min-height: 50px;
   }
-  .scan-decision .btn {
-    min-height: 58px;
+  .scan-band {
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
-  .scan-motivo {
-    min-height: 48px;
+  .scan-result-inner {
+    gap: 10px;
+    padding-top: 14px;
+  }
+  .scan-data div {
+    padding: 8px 14px;
+  }
+  .scan-actions-bar {
+    padding-top: 10px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 }
 

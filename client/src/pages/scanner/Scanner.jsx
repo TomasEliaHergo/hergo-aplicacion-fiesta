@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
@@ -11,7 +11,6 @@ import {
   LogOut,
   RotateCcw,
   ScanLine,
-  Undo2,
   Volume2,
   VolumeX,
   X,
@@ -112,46 +111,17 @@ function describirErrorCamara(err) {
 
 // ---------- Tarjeta de resultado ----------
 
-// Íconos con forma distinta por estado (no depender solo del color):
-// círculo = OK, triángulo = advertencia, cuadrado redondeado = rechazo / error,
-// credencial (rectángulo apaisado con persona) = verificar identidad.
+// Banda de estado: el ícono va en una "insignia" con forma distinta por estado
+// (no depender solo del color): cuadrado redondeado = verificar, círculo = OK,
+// cuadrado de esquinas chicas + rayas = rechazo, triángulo = ya ingresó.
 function IconoEstado({ forma }) {
+  if (forma === 'ok') return <Check size={26} strokeWidth={2.6} aria-hidden="true" />;
+  if (forma === 'verify') return <IdCard size={26} aria-hidden="true" />;
+  if (forma === 'bad') return <X size={26} strokeWidth={2.6} aria-hidden="true" />;
+  // warn / error: signo de exclamación
   return (
-    <svg className="scan-result-icon" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      {forma === 'ok' && (
-        <>
-          <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" strokeWidth="8" />
-          <path d="M29 51 L44 66 L72 36" fill="none" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      )}
-      {forma === 'warn' && (
-        <>
-          <path d="M50 8 L94 88 H6 Z" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
-          <path d="M50 36 V60" stroke="currentColor" strokeWidth="10" strokeLinecap="round" />
-          <circle cx="50" cy="75" r="6" fill="currentColor" />
-        </>
-      )}
-      {forma === 'verify' && (
-        <>
-          <rect x="5" y="18" width="90" height="64" rx="10" fill="none" stroke="currentColor" strokeWidth="7" />
-          <circle cx="32" cy="42" r="9" fill="currentColor" />
-          <path d="M17 68 C19 56 45 56 47 68 Z" fill="currentColor" />
-          <path d="M58 38 H82 M58 52 H82 M58 66 H74" stroke="currentColor" strokeWidth="7" strokeLinecap="round" />
-        </>
-      )}
-      {(forma === 'bad' || forma === 'error') && (
-        <>
-          <rect x="7" y="7" width="86" height="86" rx="18" fill="none" stroke="currentColor" strokeWidth="8" />
-          {forma === 'bad' ? (
-            <path d="M33 33 L67 67 M67 33 L33 67" stroke="currentColor" strokeWidth="10" strokeLinecap="round" />
-          ) : (
-            <>
-              <path d="M50 26 V58" stroke="currentColor" strokeWidth="10" strokeLinecap="round" />
-              <circle cx="50" cy="73" r="6" fill="currentColor" />
-            </>
-          )}
-        </>
-      )}
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true" focusable="false">
+      <path d="M12 5v9M12 19v.5" />
     </svg>
   );
 }
@@ -163,38 +133,35 @@ const SUB_ERROR = {
   rechazar: 'Error de conexión · El rechazo no se guardó · No dejar pasar',
 };
 
-function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, motivo, origen, documento }) {
+function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, origen, documento }) {
   const porDni = origen === 'dni';
   switch (estado) {
     case 'PENDIENTE':
       return { clase: 'res-verify', forma: 'verify', titulo: 'VERIFICÁ LA IDENTIDAD', sub: 'Compará la foto con la persona' };
     case 'OK':
-      return { clase: 'res-ok', forma: 'ok', titulo: 'PUEDE PASAR', sub: null };
+      return {
+        clase: 'res-ok',
+        forma: 'ok',
+        titulo: 'PUEDE PASAR',
+        sub: `Ingreso registrado a las ${formatHora(escaneado_at || new Date().toISOString())}`,
+      };
     case 'YA_INGRESO': {
-      const quien = escaneado_por_nombre ? ` · por ${escaneado_por_nombre}` : '';
+      const partes = [escaneado_at && formatHora(escaneado_at), escaneado_por_nombre && `confirmado por ${escaneado_por_nombre}`];
       return {
         clase: 'res-warn',
         forma: 'warn',
         titulo: porDni ? 'YA INGRESÓ' : 'QR YA USADO',
-        sub: escaneado_at ? `Ingresó a las ${formatHora(escaneado_at)}${quien}` : null,
-        nota: 'No dejar pasar sin consultar',
+        sub: partes.filter(Boolean).join(' · ') || null,
       };
     }
     case 'RECHAZADO':
-      return {
-        clase: 'res-bad',
-        forma: 'bad',
-        titulo: 'INGRESO RECHAZADO',
-        sub: motivo ? `Motivo: ${motivo}` : null,
-        nota: 'No dejar pasar · Derivar a RRHH',
-      };
+      return { clase: 'res-bad', forma: 'bad', titulo: 'INGRESO RECHAZADO', sub: 'No dejar pasar · Derivar a RRHH' };
     case 'NO_ENCONTRADO':
       return {
         clase: 'res-bad',
         forma: 'bad',
         titulo: 'NO ESTÁ EN LA LISTA',
         sub: `Documento ${formatDocumento(documento)} no figura entre los invitados`,
-        nota: 'No dejar pasar · Derivar a RRHH',
       };
     case 'ERROR':
       return {
@@ -209,164 +176,273 @@ function configResultado({ estado, escaneado_at, escaneado_por_nombre, accion, m
   }
 }
 
-const MOTIVOS_RECHAZO = ['No coincide la foto', 'Sin DNI', 'Otro'];
-
-function Persona({ empleado }) {
+/** Foto (cuadrado redondeado) + nombre + una lista de datos. */
+function Persona({ empleado, chica = false, conSector = true, porDni = false }) {
   const [sinFoto, setSinFoto] = useState(!empleado?.foto_url);
   return (
-    <div className="scan-result-body">
+    <>
       <div className="scan-photo-wrap">
-        <Avatar nombre={empleado.nombre} src={empleado.foto_url} size={240} className="scan-photo" eager onFallback={setSinFoto} />
+        <Avatar
+          nombre={empleado.nombre}
+          src={empleado.foto_url}
+          size={chica ? 132 : 200}
+          className={`scan-photo${chica ? ' scan-photo-sm' : ''}`}
+          eager
+          onFallback={setSinFoto}
+        />
         {sinFoto && <p className="scan-nofoto">SIN FOTO · Pedí el DNI</p>}
       </div>
+      {porDni && (
+        <p className="scan-tag-dni">
+          <IdCard size={14} aria-hidden="true" />
+          Ingresado por DNI · Pedí el documento
+        </p>
+      )}
       <p className="scan-name">{empleado.nombre}</p>
       <dl className="scan-data">
-        <div className="scan-data-full">
+        <div>
           <dt>Documento</dt>
           <dd>{formatDocumento(empleado.documento)}</dd>
         </div>
         {empleado.empresa && (
-          <div className={empleado.sector ? '' : 'scan-data-full'}>
+          <div>
             <dt>Empresa</dt>
             <dd>{empleado.empresa}</dd>
           </div>
         )}
-        {empleado.sector && (
-          <div className={empleado.empresa ? '' : 'scan-data-full'}>
+        {conSector && empleado.sector && (
+          <div>
             <dt>Sector</dt>
             <dd>{empleado.sector}</dd>
           </div>
         )}
       </dl>
-    </div>
+    </>
   );
 }
 
 const SpinnerBtn = () => <span className="spinner scan-btn-spinner" aria-hidden="true" />;
 
-/** Botones de decisión (PENDIENTE): confirmar / no es la persona (+ motivo opcional). */
-function Decision({ enviando, onConfirmar, onRechazar }) {
-  const [eligiendoMotivo, setEligiendoMotivo] = useState(false);
-  const ocupado = Boolean(enviando);
+const OPCIONES_RECHAZO = [
+  { id: 'foto', label: 'No coincide la foto' },
+  { id: 'dni', label: 'No tiene DNI' },
+  { id: 'otro', label: 'Otro motivo' },
+];
+const MOTIVO_MAX = 200;
 
-  if (eligiendoMotivo) {
-    return (
-      <div className="scan-next-bar scan-decision-bar">
-        <p className="scan-motivo-titulo" id="scan-motivo-titulo">
-          ¿Por qué no pasa? <span>(opcional)</span>
-        </p>
-        <div className="scan-motivos" role="group" aria-labelledby="scan-motivo-titulo">
-          {MOTIVOS_RECHAZO.map((m) => (
-            <button key={m} type="button" className="btn scan-motivo" disabled={ocupado} onClick={() => onRechazar(m)}>
-              {m}
-            </button>
-          ))}
-        </div>
-        <div className="scan-decision">
-          <button type="button" className="btn scan-btn-volver" disabled={ocupado} onClick={() => setEligiendoMotivo(false)}>
-            <Undo2 size={22} aria-hidden="true" />
-            Volver
-          </button>
-          <button
-            type="button"
-            className="btn scan-btn-rechazar"
-            disabled={ocupado}
-            aria-busy={enviando === 'rechazar'}
-            onClick={() => onRechazar(null)}
-          >
-            {enviando === 'rechazar' ? <SpinnerBtn /> : <X size={24} strokeWidth={3} aria-hidden="true" />}
-            Rechazar sin motivo
-          </button>
-        </div>
-      </div>
-    );
-  }
+/**
+ * Hoja inferior (<dialog> nativo: foco atrapado, fondo inerte, Esc = Cancelar)
+ * para elegir el motivo del rechazo. Mientras se envía no se puede cerrar.
+ */
+function MotivoSheet({ open, enviando, onCancelar, onRechazar }) {
+  const ref = useRef(null);
+  const titleId = useId();
+  const subId = useId();
+  const textoId = useId();
+  const [opcion, setOpcion] = useState(null);
+  const [texto, setTexto] = useState('');
+  const ocupado = enviando === 'rechazar';
+
+  useEffect(() => {
+    const dlg = ref.current;
+    if (!dlg) return;
+    if (open && !dlg.open) {
+      setOpcion(null);
+      setTexto('');
+      dlg.showModal();
+    } else if (!open && dlg.open) {
+      dlg.close();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const dlg = ref.current;
+    if (!dlg) return undefined;
+    const onCancel = (e) => {
+      e.preventDefault();
+      if (!ocupado) onCancelar();
+    };
+    dlg.addEventListener('cancel', onCancel);
+    return () => dlg.removeEventListener('cancel', onCancel);
+  }, [ocupado, onCancelar]);
+
+  const enviar = (e) => {
+    e.preventDefault();
+    if (!opcion || ocupado) return;
+    const motivo =
+      opcion === 'otro' ? texto.trim().slice(0, MOTIVO_MAX) || 'Otro' : OPCIONES_RECHAZO.find((o) => o.id === opcion).label;
+    onRechazar(motivo);
+  };
 
   return (
-    <div className="scan-next-bar scan-decision-bar">
-      <div className="scan-decision">
-        <button
-          type="button"
-          className="btn scan-btn-confirmar"
-          disabled={ocupado}
-          aria-busy={enviando === 'confirmar'}
-          onClick={onConfirmar}
-        >
-          {enviando === 'confirmar' ? <SpinnerBtn /> : <Check size={26} strokeWidth={3} aria-hidden="true" />}
-          {enviando === 'confirmar' ? 'Registrando…' : 'Confirmar ingreso'}
-        </button>
-        <button type="button" className="btn scan-btn-rechazar" disabled={ocupado} onClick={() => setEligiendoMotivo(true)}>
-          <X size={26} strokeWidth={3} aria-hidden="true" />
-          No es la persona
-        </button>
-      </div>
-    </div>
+    <dialog
+      ref={ref}
+      className="scan-sheet"
+      aria-labelledby={titleId}
+      aria-describedby={subId}
+      onClick={(e) => {
+        // toque en el fondo oscurecido = Cancelar
+        if (e.target === ref.current && !ocupado) onCancelar();
+      }}
+    >
+      {open && (
+        <form className="scan-sheet-inner" onSubmit={enviar}>
+          <span className="scan-sheet-grab" aria-hidden="true" />
+          <h2 id={titleId} className="scan-sheet-title">
+            ¿Por qué no pasa?
+          </h2>
+          <p id={subId} className="scan-sheet-sub">
+            Elegí un motivo. Queda registrado para RRHH.
+          </p>
+          <fieldset className="scan-opts" aria-labelledby={titleId} disabled={ocupado}>
+            {OPCIONES_RECHAZO.map((o) => (
+              <label key={o.id} className="scan-opt">
+                <input
+                  type="radio"
+                  name="scan-motivo"
+                  value={o.id}
+                  checked={opcion === o.id}
+                  onChange={() => setOpcion(o.id)}
+                />
+                {o.label}
+              </label>
+            ))}
+          </fieldset>
+          {opcion === 'otro' && (
+            <div className="scan-sheet-field">
+              <label htmlFor={textoId}>Contá el motivo</label>
+              <input
+                id={textoId}
+                type="text"
+                maxLength={MOTIVO_MAX}
+                autoComplete="off"
+                enterKeyHint="send"
+                value={texto}
+                disabled={ocupado}
+                onChange={(e) => setTexto(e.target.value)}
+              />
+            </div>
+          )}
+          <div className="scan-actions">
+            <button type="button" className="btn scan-btn scan-btn-ghost" disabled={ocupado} onClick={onCancelar}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn scan-btn scan-btn-danger" disabled={!opcion || ocupado} aria-busy={ocupado}>
+              {ocupado && <SpinnerBtn />}
+              Rechazar ingreso
+            </button>
+          </div>
+        </form>
+      )}
+    </dialog>
   );
 }
 
 function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onReintentar, onOtroDni, autoResume }) {
-  const { estado, empleado, mensaje, origen } = resultado;
+  const { estado, empleado, mensaje, origen, motivo } = resultado;
   const btnRef = useRef(null);
   const tituloRef = useRef(null);
+  const noEsRef = useRef(null);
+  const [motivoAbierto, setMotivoAbierto] = useState(false);
   useEffect(() => {
     // En PENDIENTE el foco va al título (no a "Confirmar": un Enter accidental no debe registrar).
     if (estado === 'PENDIENTE') tituloRef.current?.focus();
     else btnRef.current?.focus();
   }, [estado]);
 
+  const cerrarMotivo = useCallback(() => {
+    setMotivoAbierto(false);
+    setTimeout(() => noEsRef.current?.focus(), 0);
+  }, []);
+
   const config = configResultado(resultado);
   const reintentable =
     estado === 'ERROR' &&
     (resultado.accion === 'documento' ? Boolean(resultado.documento) : Boolean(resultado.token && resultado.accion));
   const noEncontrado = estado === 'NO_ENCONTRADO';
+  const rechazado = estado === 'RECHAZADO';
   const doble = reintentable || noEncontrado;
+  const ocupado = Boolean(enviando);
 
   return (
-    <div className={`scan-result ${config.clase}`} role="alert" aria-live="assertive">
-      <div className="scan-result-head">
-        <IconoEstado forma={config.forma} />
-        <div className="scan-result-texts">
+    <div className={`scan-result ${config.clase}`}>
+      <div className="scan-band" role="alert" aria-live="assertive">
+        <span className="scan-band-badge">
+          <IconoEstado forma={config.forma} />
+        </span>
+        <div className="scan-band-texts">
           <h1 className="scan-result-title" ref={tituloRef} tabIndex={-1}>
             {config.titulo}
           </h1>
           {config.sub && <p className="scan-result-sub">{config.sub}</p>}
-          {config.nota && <p className="scan-result-nota">{config.nota}</p>}
-          {origen === 'dni' && estado === 'PENDIENTE' && (
-            <p className="scan-badge-dni">
-              <IdCard size={18} aria-hidden="true" />
-              Ingresado por DNI · Pedí el documento
-            </p>
-          )}
         </div>
       </div>
 
-      {empleado ? (
-        <Persona empleado={empleado} />
-      ) : (
-        <div className="scan-result-body">
-          <p className="scan-msg">
-            {estado === 'ERROR'
-              ? mensaje || 'No se pudo conectar con el servidor. Verificá la conexión.'
-              : noEncontrado
-                ? 'Revisá que el número esté bien escrito. Si es correcto, derivá a la persona a RRHH.'
-                : origen === 'dni'
-                  ? 'No se pudo validar este documento. Derivá a la persona a RRHH.'
-                  : 'Este código no corresponde a ningún invitado. Pedile a la persona que muestre su QR correcto o derivala a RRHH.'}
-          </p>
+      <div className="scan-result-body">
+        <div className="scan-result-inner">
+          {rechazado && (
+            <p className="scan-reason">
+              <b>Motivo</b>
+              {motivo || 'Sin motivo indicado'}
+            </p>
+          )}
+          {empleado ? (
+            <Persona
+              empleado={empleado}
+              chica={rechazado}
+              conSector={!rechazado && estado !== 'YA_INGRESO'}
+              porDni={origen === 'dni' && estado === 'PENDIENTE'}
+            />
+          ) : (
+            <p className="scan-msg">
+              {estado === 'ERROR'
+                ? mensaje || 'No se pudo conectar con el servidor. Verificá la conexión.'
+                : noEncontrado
+                  ? 'Revisá que el número esté bien escrito. Si es correcto, derivá a la persona a RRHH.'
+                  : origen === 'dni'
+                    ? 'No se pudo validar este documento. Derivá a la persona a RRHH.'
+                    : 'Este código no corresponde a ningún invitado. Pedile a la persona que muestre su QR correcto o derivala a RRHH.'}
+            </p>
+          )}
+          {estado === 'YA_INGRESO' && <p className="scan-hint">No dejar pasar sin consultar con RRHH.</p>}
+        </div>
+      </div>
+
+      {autoResume && (
+        <div className="scan-countdown" aria-hidden="true">
+          <i style={{ animationDuration: `${AUTO_RESUME_MS}ms` }} />
         </div>
       )}
 
       {estado === 'PENDIENTE' ? (
-        <Decision
-          enviando={enviando}
-          onConfirmar={() => onConfirmar(resultado)}
-          onRechazar={(motivo) => onRechazar(resultado, motivo)}
-        />
+        <div className="scan-actions scan-actions-bar">
+          <button
+            type="button"
+            className="btn scan-btn scan-btn-ok"
+            disabled={ocupado}
+            aria-busy={enviando === 'confirmar'}
+            onClick={() => onConfirmar(resultado)}
+          >
+            {enviando === 'confirmar' ? <SpinnerBtn /> : <Check size={20} strokeWidth={2.6} aria-hidden="true" />}
+            {enviando === 'confirmar' ? 'Registrando…' : 'Confirmar'}
+          </button>
+          <button
+            ref={noEsRef}
+            type="button"
+            className="btn scan-btn scan-btn-no"
+            disabled={ocupado}
+            aria-haspopup="dialog"
+            onClick={() => setMotivoAbierto(true)}
+          >
+            <X size={20} strokeWidth={2.6} aria-hidden="true" />
+            No es la persona
+          </button>
+        </div>
       ) : (
-        <div className={`scan-next-bar${doble ? ' scan-next-bar-doble' : ''}`}>
+        <div className={`scan-actions scan-actions-bar scan-actions-one${doble ? ' scan-actions-doble' : ''}`}>
           {noEncontrado && (
-            <button ref={btnRef} type="button" className="btn btn-scan-next" onClick={() => onOtroDni(resultado.documento)}>
-              <IdCard size={24} aria-hidden="true" />
+            <button ref={btnRef} type="button" className="btn scan-btn scan-btn-light" onClick={() => onOtroDni(resultado.documento)}>
+              <IdCard size={20} aria-hidden="true" />
               Probar otro DNI
             </button>
           )}
@@ -374,29 +450,35 @@ function ResultCard({ resultado, enviando, onNext, onConfirmar, onRechazar, onRe
             <button
               ref={btnRef}
               type="button"
-              className="btn btn-scan-next"
-              disabled={Boolean(enviando)}
-              aria-busy={Boolean(enviando)}
+              className="btn scan-btn scan-btn-light"
+              disabled={ocupado}
+              aria-busy={ocupado}
               onClick={() => onReintentar(resultado)}
             >
-              {enviando ? <SpinnerBtn /> : <RotateCcw size={24} aria-hidden="true" />}
+              {ocupado ? <SpinnerBtn /> : <RotateCcw size={20} aria-hidden="true" />}
               Reintentar
             </button>
           )}
           <button
             ref={doble ? undefined : btnRef}
             type="button"
-            className={`btn btn-scan-next${doble ? ' btn-scan-next-sec' : ''}`}
-            disabled={Boolean(enviando)}
+            className={`btn scan-btn ${doble ? 'scan-btn-ghost' : 'scan-btn-light'}`}
+            disabled={ocupado}
             onClick={onNext}
           >
-            <ScanLine size={24} aria-hidden="true" />
+            <ScanLine size={20} aria-hidden="true" />
             {noEncontrado ? 'Volver a escanear' : 'Escanear siguiente'}
           </button>
         </div>
       )}
-      {autoResume && (
-        <div className="scan-countdown" style={{ animationDuration: `${AUTO_RESUME_MS}ms` }} aria-hidden="true" />
+
+      {estado === 'PENDIENTE' && (
+        <MotivoSheet
+          open={motivoAbierto}
+          enviando={enviando}
+          onCancelar={cerrarMotivo}
+          onRechazar={(m) => onRechazar(resultado, m)}
+        />
       )}
     </div>
   );
@@ -492,7 +574,7 @@ function DniSheet({ open, inicial, error: errorExterno, onBuscar, onCerrar }) {
 
 export default function Scanner() {
   useTheme('scanner');
-  useDocumentTitle('Escáner - Fiesta de fin de año');
+  useDocumentTitle('Escáner - Evento de fin de año');
   const { usuario, logout } = useAuth();
   const confirm = useConfirm();
   const containerRef = useRef(null);

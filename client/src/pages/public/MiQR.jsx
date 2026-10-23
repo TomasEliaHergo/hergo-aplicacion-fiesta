@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Camera,
@@ -9,6 +8,7 @@ import {
   SearchX,
   Sparkles,
   Sun,
+  UserRoundSearch,
 } from 'lucide-react';
 import { api } from '../../api.js';
 import QrCard from '../../components/QrCard.jsx';
@@ -83,7 +83,9 @@ function PasoDocumento({ documento, setDocumento, onSubmit, cargando, error, inp
           <Sparkles size={14} aria-hidden="true" />
           Te esperamos
         </span>
-        <h1 className="guest-title">Fiesta de fin de año</h1>
+        <p className="guest-place">Plaza Mayor</p>
+        <h1 className="guest-title">Bienvenidos</h1>
+        <p className="guest-subtitle">Evento de fin de año</p>
         <p className="guest-lead">Ingresá tu documento y obtené tu código QR de ingreso.</p>
       </header>
 
@@ -157,8 +159,16 @@ function PasoNoEncontrado({ documento, onRetry, titleRef }) {
   );
 }
 
-function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
-  const nombre = primerNombre(invitado.nombre);
+function BotonOtroDocumento({ onClick, className = '' }) {
+  return (
+    <button type="button" className={`btn btn-block guest-other ${className}`} onClick={onClick}>
+      <UserRoundSearch size={18} aria-hidden="true" />
+      Consultar otro documento
+    </button>
+  );
+}
+
+function PasoBienvenida({ invitado, onOtroDocumento, titleRef, enVivo }) {
   return (
     <>
       <Confeti />
@@ -169,7 +179,7 @@ function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
         </span>
         <p className="guest-eyebrow">Estás en la lista</p>
         <h1 className="welcome-title" tabIndex={-1} ref={titleRef}>
-          ¡Te damos la bienvenida, <span className="gold">{nombre}</span>!
+          ¡Te damos la bienvenida a la <span className="gold">Plaza Mayor</span>!
         </h1>
         <p className="guest-lead">Este es tu código de ingreso. Mostralo en la puerta.</p>
       </header>
@@ -211,14 +221,12 @@ function PasoBienvenida({ invitado, onNoSoy, titleRef, enVivo }) {
         </li>
       </ul>
 
-      <button type="button" className="btn btn-link guest-notme" onClick={onNoSoy}>
-        No soy {nombre}
-      </button>
+      <BotonOtroDocumento onClick={onOtroDocumento} />
     </>
   );
 }
 
-function Celebracion({ invitado, titleRef }) {
+function Celebracion({ invitado, titleRef, onOtroDocumento }) {
   const nombre = primerNombre(invitado.nombre);
   return (
     <section className="celebration" aria-labelledby="cel-title">
@@ -230,14 +238,15 @@ function Celebracion({ invitado, titleRef }) {
         </span>
         <p className="guest-eyebrow">Ya estás adentro</p>
         <h1 id="cel-title" className="celebration-title" tabIndex={-1} ref={titleRef}>
-          ¡Bienvenidos a la fiesta, <span className="gold">{nombre}</span>!
+          ¡Bienvenidos a la Plaza Mayor, <span className="gold">{nombre}</span>!
         </h1>
         {invitado.escaneado_at && (
           <p className="celebration-time">
             Ingresaste a las <strong className="tabular">{formatHora(invitado.escaneado_at)}</strong>
           </p>
         )}
-        <p className="guest-lead">Que la disfrutes.</p>
+        <p className="guest-lead">Que lo disfrutes.</p>
+        <BotonOtroDocumento onClick={onOtroDocumento} className="guest-other-sm" />
       </div>
     </section>
   );
@@ -247,7 +256,7 @@ function Celebracion({ invitado, titleRef }) {
 
 export default function MiQR() {
   useTheme('night');
-  useDocumentTitle('Mi QR - Fiesta de fin de año');
+  useDocumentTitle('Mi QR · Plaza Mayor');
 
   const [invitado, setInvitadoState] = useState(leerInvitado);
   const [restaurado] = useState(() => invitado !== null); // abrió el link otra vez
@@ -302,7 +311,9 @@ export default function MiQR() {
       const next = { ...prev, ingreso, escaneado_at, nombre: d?.nombre || prev.nombre };
       setInvitado(next);
       if (ingreso && !prev.ingreso) {
-        setAnuncio(`¡Bienvenidos a la fiesta! Ingresaste a las ${formatHora(escaneado_at)}.`);
+        setAnuncio(
+          `¡Bienvenidos a la Plaza Mayor, ${primerNombre(next.nombre)}! Ingresaste a las ${formatHora(escaneado_at)}.`,
+        );
         try {
           navigator.vibrate?.([80, 60, 160]);
         } catch {
@@ -361,7 +372,11 @@ export default function MiQR() {
         ingreso: !!data.ingreso,
         escaneado_at: data.escaneado_at || null,
       });
-      setAnuncio(`Te damos la bienvenida, ${primerNombre(data.nombre)}. Tu código QR está listo.`);
+      setAnuncio(
+        data.ingreso
+          ? `¡Bienvenidos a la Plaza Mayor, ${primerNombre(data.nombre)}! Ya registramos tu ingreso.`
+          : 'Te damos la bienvenida a la Plaza Mayor. Tu código QR está listo.',
+      );
     } catch (err) {
       if (err.status === 404) {
         setNoEncontrado(true);
@@ -375,6 +390,13 @@ export default function MiQR() {
     } finally {
       setCargando(false);
     }
+  };
+
+  // Celular compartido: olvida al invitado recordado y vuelve al paso del documento (vacío y con foco).
+  const consultarOtroDocumento = () => {
+    setDocumento('');
+    volverAlInicio();
+    setAnuncio(''); // el foco va al campo del documento, que ya se anuncia solo
   };
 
   const reintentar = () => {
@@ -403,19 +425,13 @@ export default function MiQR() {
             invitado={invitado}
             titleRef={titleRef}
             enVivo={enVivo}
-            onNoSoy={() => {
-              setDocumento('');
-              volverAlInicio();
-            }}
+            onOtroDocumento={consultarOtroDocumento}
           />
         )}
-        {etapa === 'fiesta' && <Celebracion invitado={invitado} titleRef={titleRef} />}
+        {etapa === 'fiesta' && (
+          <Celebracion invitado={invitado} titleRef={titleRef} onOtroDocumento={consultarOtroDocumento} />
+        )}
       </main>
-      {etapa !== 'fiesta' && (
-        <footer className="guest-footer">
-          <Link to="/login">Acceso del personal</Link>
-        </footer>
-      )}
       <p className="sr-only" aria-live="polite">
         {anuncio}
       </p>

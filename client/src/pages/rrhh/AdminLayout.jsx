@@ -42,7 +42,7 @@ function Brand() {
         <Sparkles size={18} />
       </span>
       <span className="brand-text">
-        <strong>Fiesta Hergo</strong>
+        <strong>Evento Hergo</strong>
         <small>Panel RRHH</small>
       </span>
     </Link>

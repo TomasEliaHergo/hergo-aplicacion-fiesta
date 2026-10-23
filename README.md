@@ -81,6 +81,7 @@ Antes del evento real, para dejar la base vacía (empleados, asistencias, rechaz
 npm run reset:datos --prefix server                       # usa DB_MODE de server/.env (Supabase o local)
 npm run reset:datos --prefix server -- --local            # fuerza la base local (PGlite)
 npm run reset:datos --prefix server -- --si-estoy-seguro  # sin pregunta (no interactivo)
+npm run reset:invitados --prefix server                   # SOLO invitados, asistencias, rechazos y fotos: conserva los usuarios
 npm run seed:admin --prefix server -- admin "Admin RRHH"  # después: volver a crear el usuario RRHH
 ```
 

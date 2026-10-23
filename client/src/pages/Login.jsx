@@ -16,7 +16,7 @@ function destinoPermitido(from, rol) {
 
 export default function Login() {
   useTheme('light');
-  useDocumentTitle('Ingresar - Fiesta de fin de año');
+  useDocumentTitle('Ingresar - Evento de fin de año');
   const { usuario, login } = useAuth();
   const location = useLocation();
   const [username, setUsername] = useState('');
@@ -59,7 +59,7 @@ export default function Login() {
           <span className="brand-mark" aria-hidden="true">
             <Sparkles size={22} />
           </span>
-          <h1>Fiesta Hergo</h1>
+          <h1>Evento Hergo</h1>
           <p>Acceso del personal · RRHH y puerta</p>
         </div>
 

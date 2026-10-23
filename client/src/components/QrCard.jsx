@@ -37,8 +37,8 @@ function generarPng(qrCanvas, nombre, empresa) {
   ctx.fillStyle = '#f2c14e';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  fitFont(ctx, 'Fiesta de fin de año', W - 2 * pad, 40);
-  ctx.fillText('Fiesta de fin de año', W / 2, 46);
+  fitFont(ctx, 'Plaza Mayor · Evento de fin de año', W - 2 * pad, 40);
+  ctx.fillText('Plaza Mayor · Evento de fin de año', W / 2, 46);
 
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(qrCanvas, pad, 120, qrSize, qrSize);
@@ -71,7 +71,7 @@ async function guardarPng(blob, filename) {
   }
   if (file && navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: 'Mi QR - Fiesta de fin de año' });
+      await navigator.share({ files: [file], title: 'Mi QR · Plaza Mayor' });
       return;
     } catch (err) {
       if (err?.name === 'AbortError') return; // el usuario canceló

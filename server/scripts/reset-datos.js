@@ -6,6 +6,7 @@
 //   npm run reset:datos --prefix server                      # según DB_MODE de server/.env
 //   npm run reset:datos --prefix server -- --local           # fuerza el modo local (PGlite)
 //   npm run reset:datos --prefix server -- --si-estoy-seguro # sin preguntar (no interactivo)
+//   npm run reset:invitados --prefix server                  # solo invitados + fotos (CONSERVA los usuarios)
 //
 // Modo local: el server tiene que estar FRENADO (PGlite admite un solo proceso).
 import { parseArgs } from 'node:util';
@@ -15,6 +16,7 @@ const { values: flags } = parseArgs({
   options: {
     'si-estoy-seguro': { type: 'boolean', default: false },
     local: { type: 'boolean', default: false },
+    'solo-invitados': { type: 'boolean', default: false },
   },
   allowPositionals: false,
 });
@@ -29,7 +31,8 @@ const { FRASE_CONFIRMACION, refProyecto, trozos, listarArchivosRecursivo } = awa
 const UUID_CERO = '00000000-0000-0000-0000-000000000000';
 // Orden que respeta las FK: rechazos/asistencias referencian empleados y usuarios
 // (asistencias.escaneado_por y rechazos.rechazado_por son "on delete restrict").
-const TABLAS = ['rechazos', 'asistencias', 'empleados', 'usuarios'];
+const soloInvitados = flags['solo-invitados'];
+const TABLAS = soloInvitados ? ['rechazos', 'asistencias', 'empleados'] : ['rechazos', 'asistencias', 'empleados', 'usuarios'];
 
 let cerrarLocal = async () => {};
 
@@ -47,7 +50,9 @@ try {
   await salir(err.message);
 }
 
-console.log('\n=== Borrar TODOS los datos de prueba ===\n');
+console.log(soloInvitados
+  ? '\n=== Borrar invitados, asistencias y fotos (los usuarios se conservan) ===\n'
+  : '\n=== Borrar TODOS los datos de prueba ===\n');
 
 if (config.isLocal) {
   console.log('Modo:      LOCAL (PGlite en server/.data)');
@@ -80,7 +85,7 @@ async function contar(tabla) {
 }
 
 const conteos = {};
-for (const t of TABLAS) {
+for (const t of [...TABLAS, ...(soloInvitados ? ['usuarios'] : [])]) {
   conteos[t] = await contar(t);
   if (conteos[t].error && t !== 'rechazos') await salir(`no se pudo contar ${t}: ${ayudaLock(conteos[t].error.message)}`);
 }
@@ -98,7 +103,9 @@ console.log('Se va a borrar:');
 console.log(`  empleados:    ${fmt(conteos.empleados)}`);
 console.log(`  asistencias:  ${fmt(conteos.asistencias)}`);
 console.log(`  rechazos:     ${fmt(conteos.rechazos)}`);
-console.log(`  usuarios:     ${fmt(conteos.usuarios)}   (TODOS, incluido RRHH)`);
+console.log(soloInvitados
+  ? `  usuarios:     NO se borran (quedan ${fmt(conteos.usuarios)})`
+  : `  usuarios:     ${fmt(conteos.usuarios)}   (TODOS, incluido RRHH)`);
 console.log(`  fotos:        ${archivos.length} archivo(s) en el bucket "${config.fotosBucket}"`);
 console.log('\nNo se puede deshacer. La estructura (tablas, funciones, bucket) no se toca.\n');
 
@@ -135,6 +142,10 @@ for (const t of TABLAS) {
 const restantes = await listarArchivosRecursivo((p, o) => bucket.list(p, o)).catch(() => null);
 if (restantes?.length) console.warn(`\nAtención: quedaron ${restantes.length} archivo(s) en el bucket (volvé a correr el script).`);
 
-console.log('\nListo. Siguiente paso: crear de nuevo el usuario RRHH:');
-console.log('  npm run seed:admin --prefix server -- admin "Admin RRHH"' + (config.isLocal ? '   (o arrancar el server: en modo local recrea rrhh/scanner)' : ''));
+if (soloInvitados) {
+  console.log('\nListo. Los usuarios siguen activos: ya se puede importar el Excel definitivo y subir las fotos.');
+} else {
+  console.log('\nListo. Siguiente paso: crear de nuevo el usuario RRHH:');
+  console.log('  npm run seed:admin --prefix server -- admin "Admin RRHH"' + (config.isLocal ? '   (o arrancar el server: en modo local recrea rrhh/scanner)' : ''));
+}
 await salir(null, 0);
