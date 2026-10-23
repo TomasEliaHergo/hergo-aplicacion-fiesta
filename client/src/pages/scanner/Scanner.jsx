@@ -574,7 +574,7 @@ function DniSheet({ open, inicial, error: errorExterno, onBuscar, onCerrar }) {
 
 export default function Scanner() {
   useTheme('scanner');
-  useDocumentTitle('Escáner - Evento de fin de año');
+  useDocumentTitle('Escáner - Evento de Fin de Año');
   const { usuario, logout } = useAuth();
   const confirm = useConfirm();
   const containerRef = useRef(null);

@@ -85,7 +85,7 @@ function PasoDocumento({ documento, setDocumento, onSubmit, cargando, error, inp
         </span>
         <p className="guest-place">Plaza Mayor</p>
         <h1 className="guest-title">Bienvenidos</h1>
-        <p className="guest-subtitle">Evento de fin de año</p>
+        <p className="guest-subtitle">Evento de Fin de Año</p>
         <p className="guest-lead">Ingresá tu documento y obtené tu código QR de ingreso.</p>
       </header>
 

@@ -37,8 +37,8 @@ function generarPng(qrCanvas, nombre, empresa) {
   ctx.fillStyle = '#f2c14e';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  fitFont(ctx, 'Plaza Mayor · Evento de fin de año', W - 2 * pad, 40);
-  ctx.fillText('Plaza Mayor · Evento de fin de año', W / 2, 46);
+  fitFont(ctx, 'Plaza Mayor · Evento de Fin de Año', W - 2 * pad, 40);
+  ctx.fillText('Plaza Mayor · Evento de Fin de Año', W / 2, 46);
 
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(qrCanvas, pad, 120, qrSize, qrSize);

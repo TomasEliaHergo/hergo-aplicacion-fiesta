@@ -16,7 +16,7 @@ function destinoPermitido(from, rol) {
 
 export default function Login() {
   useTheme('light');
-  useDocumentTitle('Ingresar - Evento de fin de año');
+  useDocumentTitle('Ingresar - Evento de Fin de Año');
   const { usuario, login } = useAuth();
   const location = useLocation();
   const [username, setUsername] = useState('');
